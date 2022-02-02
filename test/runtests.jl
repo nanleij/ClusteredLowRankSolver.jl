@@ -2,5 +2,58 @@ using ClusteredLowRankSolver
 using Test
 
 @testset "ClusteredLowRankSolver.jl" begin
-    # Write your tests here.
+    #for these tests we need to register BasesAndSamples first. Or we need to make it a submodule maybe
+    @testset "examples" begin
+        # these examples test nearly everything
+        include("./examples/Delsarte.jl")
+        using .Delsarte
+        _, sol, _, _ = delsarte(3, 10, 1//2)
+        @test sol.dual_objective ≈ 13.158314 atol=1e-5
+        _, sol, _, _ = delsarte(8, 10, 1//2)
+        @test sol2.dual_objective ≈ 240 atol = 1e-10
+
+        include("./examples/SpherePacking.jl")
+        using .SpherePacking
+        _, sol, _, _ = cohnelkies(8, 10)
+        @test sol.dual_objective ≈ BigFloat(pi)^4/384 atol=e-13
+
+        include("./examples/ThreePointBound.jl")
+        using .ThreePointBound
+        _, sol, _, _ = three_point_spherical_cap(3,6, 1//2)
+        @test sol.dual_objective ≈ 12.718780 atol=e-5
+    end
+
+    @testset "SampledMPolyElem" begin #this is mostly tested through the examples too
+        using AbstractAlgebra
+        R, (x,) = PolynomialRing(RealField, ["x"])
+        p1 = x^2 + 2
+        samples = [[i] for i=0:10]
+        p2 = ClusteredLowRankSolver.SampledMPolyElem(p1,samples)
+        @testset "addition" begin
+            @test (p1+p2)(5) == 2*p1(5)
+            @test (p2+p1)(5) == 2*p1(5)
+            @test (p2+p2)(5) == 2*p1(5)
+        end
+        @testset "subtraction" begin
+            @test (p1-p2)(4) == 0
+            @test (p2-p1)(4) == p2(4)-p1(4)
+            @test (p2-p2)(3) == 0
+        end
+        @testset "multiplication" begin
+            @test (p1*p2)(5) == p1(5)^2
+            @test (p2*p1)(5) == p1(5)^2
+            @test (p2*p2)(5) == p1(5)^2
+        end
+    end
+
+    @testset "LowRankMat(Pol)" begin
+        using AbstractAlgebra
+        R, (x,) = PolynomialRing(RealField, ["x"])
+        A = LowRankMatPol([x],[[x^2,x^3]]) # the matrix [x^5 x^6; x^6 x^7]
+        B = evaluate(A,2)
+        @test [B[i,j] for i=1:2,j=1:2] == [2^5 2^6; 2^6 2^7]
+        At = transpose(A)
+        Bt = evaluate(At,2)
+        @test [Bt[i,j] for i=1:2,j=1:2] == [2^5 2^6; 2^6 2^7]
+    end
 end
