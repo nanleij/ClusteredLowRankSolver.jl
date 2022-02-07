@@ -41,7 +41,7 @@ function solvesdp(
     max_complementary_gap = Arb(10,prec=prec)^100, # the maximum of <X,Y>
     need_primal_feasible = false,
     need_dual_feasible = false,
-    verbose = 1, # 0: print nothing, 1: print summaries, 2: print everything,
+    verbose = true, # false: print nothing, true: print information after each iteration
     step_length_threshold = Arb(10,prec=prec)^(-7), # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
     initial_solutions = [], # initial solutions of the right format, in the order x,X,y,Y. This can give errors if the sizes are incorrect
     #testing:
@@ -190,11 +190,7 @@ function solvesdp(
     #step 2
     #loop initialization: compute or set the initial values, and print the header
     iter = 1
-    if verbose == 1
-		@printf("%5s %8s %11s %11s %11s %10s %10s %10s %10s \n",
-            "iter","time(s)","μ","P-obj","D-obj","gap","error","α_p","α_d"
-        )
-    elseif verbose == 2
+    if verbose
 		@printf("%5s %8s %11s %11s %11s %10s %10s %10s %10s %10s %10s %10s\n",
             "iter","time(s)","μ","P-obj","D-obj","gap","P-error","p-error","d-error","α_p","α_d","beta"
         )
@@ -400,7 +396,7 @@ function solvesdp(
             timings[7] += time_res
             timings[8:12] .+= [time_schur, time_cholS, time_LinvB, time_Q, time_cholQ]
             timings[13:17] .+= times_predictor_in .+ times_corrector_in
-        elseif testing && verbose > 0 #if testing, the times of the first few iterations may be interesting
+        elseif testing && verbose #if testing, the times of the first few iterations may be interesting
             println(
                 "decomp:",
                 time_decomp,
@@ -425,20 +421,7 @@ function solvesdp(
         end
         # print the objectives of the start of the iteration, imitating simmons duffin
         #I think this is a bit weird, because we only know the step lengths at the end of the iteration
-        if verbose == 1
-			@printf(
-                "%5d %8.1f %11.3e %11.3e %11.3e %10.2e %10.2e %10.2e %10.2e\n",
-                iter,
-                time() - time_start,
-                BigFloat(mu),
-                BigFloat(p_obj),
-                BigFloat(d_obj),
-                BigFloat(dual_gap),
-                max(BigFloat(compute_error(P)),BigFloat(compute_error(p)),BigFloat(compute_error(d))),
-                BigFloat(alpha_p),
-                BigFloat(alpha_d),
-            )
-		elseif verbose == 2
+        if verbose
 			@printf(
                 "%5d %8.1f %11.3e %11.3e %11.3e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e\n",
                 iter,
@@ -479,39 +462,7 @@ function solvesdp(
         rethrow(e)
     end #of try/catch
     time_total = time() - time_start #this may include compile time
-    if verbose == 1
-        @printf(
-            "%5s %8s %11s %11s %11s %10s %10s %10s %10s\n",
-            "iter",
-            "time(s)",
-            "μ",
-            "P-obj",
-            "D-obj",
-            "gap",
-            "error",
-            "α_p",
-            "α_d",
-        )
-		println(
-			"\nTime spent: (The total time may include compile time. The first few iterations are not included in the rest of the times)",
-		)
-		@printf(
-            "%11s %11s %11s %11s %11s %11s %11s %11s\n",
-            "total",
-            "Decomp",
-            "predict_dir",
-            "correct_dir",
-            "alpha",
-            "Xinv",
-            "R",
-            "residuals"
-        )
-        @printf(
-            "%11.5e %11.5e %11.5e %11.5e %11.5e %11.5e %11.5e %11.5e\n\n",
-            time_total,
-            timings[1:7]...
-        )
-		elseif verbose == 2
+    if verbose
 		@printf(
             "%5s %8s %11s %11s %11s %10s %10s %10s %10s %10s %10s %10s\n",
             "iter",
