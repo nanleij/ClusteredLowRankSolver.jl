@@ -2,9 +2,6 @@
 ### Low rank matrices ###
 #########################
 
-"""
-The matrix ∑_i eigenvalues[i]*rightevs[i]*leftevs[i]'
-"""
 struct LowRankMat
     eigenvalues::Vector{Arb}
     leftevs::Vector{ArbRefMatrix}
@@ -130,6 +127,13 @@ function Base.copy(q::SampledMPolyElem)
     SampledMPolyElem(copy(q.evaluations))
 end
 
+"""
+    approximatefekete(basis, samples) -> basis, samples
+
+Compute approximate fekete points based on samples and a corresponding orthogonal basis.
+
+This preserves a degree ordering of `basis` if present.
+"""
 function approximatefekete(basis, samples;show_det=false,s=3)
     V, P, samples = approximate_fekete(samples, basis,show_det=show_det,s=s)
     [SampledMPolyElem(samples, V[:,p]) for p in eachindex(basis)], samples
@@ -142,6 +146,13 @@ end
 
 polys = Union{MPolyElem, SampledMPolyElem}
 
+"""
+    LowRankMat(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
+
+The matrix ∑_i eigenvalues[i]*rightevs[i]*leftevs[i]'.
+
+If `leftevs` is not specified, use `leftevs = rightevs`. The elements of the `Vectors` are
+"""
 struct LowRankMatPol
     eigenvalues::Vector{polys}
     leftevs::Vector{Vector{polys}}
@@ -169,6 +180,13 @@ end
 ### Low rank SOS problems ###
 #############################
 
+"""
+    Block(l::Any[, r::Int, s::Int])
+
+Specifies a block corresponding to the positive semidefinite variable `l`.
+
+Specifying `r,s` makes the Block correspond to the `r,s` subblock of the variable `l`.
+"""
 struct Block
     l::Any
     r::Int
@@ -180,9 +198,18 @@ function Block(l)
 end
 
 """
-    Models a polynomial constaint of the form
-        constant(x) = ∑_block < block, matrixcoeff[block](x) > + ∑_freevar freecoeff[freevar](x)*freevar
-    sampled on the elements of samples
+    Constraint(constant, matrixcoeff, freecoeff, samples[, scalings])
+
+Models a polynomial constaint of the form
+    constant(x) = ∑_block < block, matrixcoeff[block](x) > + ∑_freevar freecoeff[freevar](x)*freevar
+sampled on the elements of samples.
+
+Arguments:
+    constant::MPolyElem
+    matrixcoeff::Dict(Block, LowRankMatPol)
+    freecoeff::Dict(Any, MPolyElem)
+    samples::Vector{Vector}
+    scalings::Vector
 """
 struct Constraint
     constant::MPolyElem
@@ -193,16 +220,22 @@ struct Constraint
 end
 Constraint(constant,matrixcoeff,freecoeff,samples) = Constraint(constant,matrixcoeff,freecoeff,samples,[1 for s in samples])
 
+
+"""
+    Objective(constant, matrixcoeff::Dict{Block, Matrix}, freecoeff::Dict)
+
+The objective for the LowRankSOSProblem
+"""
 struct Objective
     constant
     matrixcoeff::Dict{Block,Matrix}
     freecoeff::Dict
 end
 
-struct LowRankSOSProblem #maybe we should have maximize, objective, constraints. (maximize/minimize the objective subject to the constraint; that feels more intuitive)
+struct LowRankSOSProblem #Maybe we  need to rename this to e.g. LowRankPolProblem
     maximize::Bool
-    constraints::Vector{Constraint}
     objective::Objective
+    constraints::Vector{Constraint}
 end
 
 ##############################
@@ -227,6 +260,17 @@ function ClusteredLowRankSDP(maximize,constant,A,B,c,C,b)
     return ClusteredLowRankSDP(maximize,constant,A,B,c,C,b,matrixcoeff_names,freecoeff_names)
 end
 
+"""
+    ClusteredLowRankSDP(sos::LowRankSOSProblem[, as_free])
+
+Define a ClusteredLowRankSDP based on the LowRankSOSProblem sos.
+
+The PSD variables defined by the keys `as_free` will be modelled as extra free variables,
+with extra constraints to ensure that they are equal to the entries of the PSD variables.
+Keyword arguments:
+    prec (default: precision(BigFloat)) - the precision of the result
+    verbose (default: false) -  print progress to the standard output
+"""
 function ClusteredLowRankSDP(sos::LowRankSOSProblem, as_free = []; prec=precision(BigFloat),verbose = false)
     # the blocks in as_free will be modelled as extra variables
     if length(as_free) > 0

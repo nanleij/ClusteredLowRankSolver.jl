@@ -7,21 +7,23 @@ struct SolverFailure <: Exception
 end
 
 """
-    Solve the clustered SDP with low-rank constraint matrices.
+	solvesdp(sdp; kwargs...)
 
-    Solve the following sdp:
-        'max/min ∑_j <C^j, Y^j> + b^T y
-        s.t.    <A_*^j,Y^j> + B^j y = c^j
-                Y^j ⪰ 0'
-    where we optimize over the free variables 'y' and the PSD block matrices
-    'Y^j = diag(Y^{j,1}, ..., Y^{j,L_j})', and '<A_*^j, Y^j> = (<A_p^j, Y^j>)_{p=1,...,P_j}'.
-    The matrices A^j_p have the same block structure as Y^j. Every A^{j,l} can have several equalsized blocks A^{j,l}[r,s].
-    The smallest blocks have a low rank structure.
+Solve the clustered SDP with low-rank constraint matrices.
 
-    Important parameters which are not clear from the name:
-        - gamma: the step length reduction; a maximum step length of α reduces to a step length of max(gamma*α,1)
-        - beta_(in)feasible: the amount mu is tried to be reduced by in each iteration, for (in)feasible solutions
-        - omega_p/d: the starting matrix variable for the primal/dual is omega_p/d*I
+Solve the following sdp:
+    'max/min ∑_j <C^j, Y^j> + b^T y
+    s.t.    <A_*^j,Y^j> + B^j y = c^j
+            Y^j ⪰ 0'
+where we optimize over the free variables 'y' and the PSD block matrices
+'Y^j = diag(Y^{j,1}, ..., Y^{j,L_j})', and '<A_*^j, Y^j> = (<A_p^j, Y^j>)_{p=1,...,P_j}'.
+The matrices A^j_p have the same block structure as Y^j. Every A^{j,l} can have several equalsized blocks A^{j,l}[r,s].
+The smallest blocks have a low rank structure.
+
+Important keyword arguments which are not clear from the name:
+    - gamma: the step length reduction; a maximum step length of α reduces to a step length of max(gamma*α,1)
+    - beta_(in)feasible: the amount mu is tried to be reduced by in each iteration, for (in)feasible solutions
+    - omega_p/d: the starting matrix variable for the primal/dual is omega_p/d*I
 """
 function solvesdp(
     sdp::ClusteredLowRankSDP,
