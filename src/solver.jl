@@ -425,7 +425,7 @@ function solvesdp(
         end
         # print the objectives of the start of the iteration, imitating simmons duffin
         #I think this is a bit weird, because we only know the step lengths at the end of the iteration
-        if verbose == 2
+        if verbose == 1
 			@printf(
                 "%5d %8.1f %11.3e %11.3e %11.3e %10.2e %10.2e %10.2e %10.2e\n",
                 iter,
@@ -434,7 +434,7 @@ function solvesdp(
                 BigFloat(p_obj),
                 BigFloat(d_obj),
                 BigFloat(dual_gap),
-                maximum(BigFloat(compute_error(P)),BigFloat(compute_error(p)),BigFloat(compute_error(d))),
+                max(BigFloat(compute_error(P)),BigFloat(compute_error(p)),BigFloat(compute_error(d))),
                 BigFloat(alpha_p),
                 BigFloat(alpha_d),
             )

@@ -5,22 +5,22 @@ using Test
     #for these tests we need to register BasesAndSamples first. Or we need to make it a submodule maybe
     @testset "examples" begin
         # these examples test nearly everything
-        include("./examples/Delsarte.jl")
+        include("../examples/Delsarte.jl")
         using .Delsarte
         _, sol, _, _ = delsarte(3, 10, 1//2)
         @test sol.dual_objective ≈ 13.158314 atol=1e-5
         _, sol, _, _ = delsarte(8, 10, 1//2)
-        @test sol2.dual_objective ≈ 240 atol = 1e-10
+        @test sol.dual_objective ≈ 240 atol = 1e-10
 
-        include("./examples/SpherePacking.jl")
+        include("../examples/SpherePacking.jl")
         using .SpherePacking
-        _, sol, _, _ = cohnelkies(8, 10)
-        @test sol.dual_objective ≈ BigFloat(pi)^4/384 atol=e-13
+        _, sol, _, _ = cohnelkies(8, 25)
+        @test sol.dual_objective ≈ BigFloat(pi)^4/384 atol=1e-4 #exact in the limit of d-> ∞, but for this d the error still is relatively large
 
-        include("./examples/ThreePointBound.jl")
+        include("../examples/ThreePointBound.jl")
         using .ThreePointBound
         _, sol, _, _ = three_point_spherical_cap(3,6, 1//2)
-        @test sol.dual_objective ≈ 12.718780 atol=e-5
+        @test sol.dual_objective ≈ 12.718780 atol=1e-5
     end
 
     @testset "SampledMPolyElem" begin #this is mostly tested through the examples too

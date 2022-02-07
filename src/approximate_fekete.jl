@@ -25,7 +25,7 @@ function approximate_fekete_bigfloat(V; s = 3, show_det = false)
         P = P * U #keep track of the basis change
     end
     # Find the good points:
-    F2 = qr(Float64.(V'), Val(true))
+    F2 = qr(Float64.(V'), ColumnNorm())
     point_indices = F2.p[1:size(V,2)]
     # Do a last basis change to get a good basis for these points
     F = qr(Float64.(V[point_indices,:]))
@@ -52,7 +52,7 @@ function approximate_fekete_arb(V::Matrix{T}; s = 3,show_det = false) where T
         Arblib.approx_mul!(P,P,U)
     end
     # Find the good points:
-    F2 = qr(Float64.(V'), Val(true))
+    F2 = qr(Float64.(V'),  ColumnNorm())
     point_indices = F2.p[1:size(V,2)]
     # Do a last basis change to get a good basis for these points
     V = V[point_indices,:]
@@ -82,7 +82,7 @@ function approximate_fekete_highprec(V::Matrix{T}; s = 3,show_det = false) where
     Arblib.approx_mul!(V,V,U)
 
     # Do a QR factorization of V^T to get a subset of good sample points
-    F2 = qr(BigFloat.(V'),Val(true))
+    F2 = qr(BigFloat.(V'), ColumnNorm())
     point_indices = F2.p[1:size(V,2)]
     # Do a last basis change to get a good basis for these points
     V = V[point_indices,:]

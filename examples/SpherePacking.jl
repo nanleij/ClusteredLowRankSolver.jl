@@ -48,7 +48,7 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
 
     #We orthogonalize the laguerre basis with respect to the sample points
     q = basis_laguerre(2d+1, BigFloat(n) / 2 - 1, BigFloat(2 * pi) * x)
-    max_coef = [max(coeffs(q[i])...) for i = 1:length(q)]
+    max_coef = [max(coefficients(q[i])...) for i = 1:length(q)]
     basis = [max_coef[i]^(-1) * q[i] for i = 1:length(q)]
     samples = sample_points_rescaled_laguerre(2d+1) #TODO test with different sample points. Now they're fixed already and we only improve the basis
     basis, samples = approximatefekete(basis,samples)
@@ -85,7 +85,7 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
         for j=1:i
             #We take a new basis since the domain depends on the radii
             basis = [max_coef[i]^(-1) * q[i] for i = 1:length(q)]
-            samples = sample_points_rescaled_laguerre(2d+1) .+ (r[i]+r[j])^2)
+            samples = sample_points_rescaled_laguerre(2d+1) .+ (r[i]+r[j])^2
             basis,samples = approximatefekete(basis,samples)
 
             PSD_part = Dict()
@@ -116,7 +116,7 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
     #objective: M
     obj = Objective(0,Dict(),Dict(:M=>1))
 
-    sos = LowRankSOSProblem(false,[con1...,con2...,con3...,con4...],obj)
+    sos = LowRankSOSProblem(false,obj,[con1...,con2...,con3...,con4...])
 
     sdp = ClusteredLowRankSDP(sos)
     if ret_sdp
@@ -147,7 +147,7 @@ function cohnelkies(n,d,r=1;scale_var_fun = k->1, prec=512, model_prec=prec,ret_
     R, (x,) = PolynomialRing(RealField,["x"])
 
     q = basis_laguerre(2d+1, BigFloat(n) / 2 - 1, BigFloat(2 * pi) * x)
-    max_coef = [max(coeffs(q[i])...) for i = 1:length(q)]
+    max_coef = [max(coefficients(q[i])...) for i = 1:length(q)]
     basis = [max_coef[i]^(-1) * q[i] for i = 1:length(q)]
     samples = vcat(sample_points_rescaled_laguerre(2d+1),sample_points_chebyshev(4d,0,5)) #TODO test with different sample points. Now they're fixed already and we only improve the basis
     basis, samples = approximatefekete(basis,samples)
@@ -165,8 +165,8 @@ function cohnelkies(n,d,r=1;scale_var_fun = k->1, prec=512, model_prec=prec,ret_
 
     #constraint 2: SOS + (x - (r_i + r_j)^2)*SOS + sum_k a_ijk k! pi^-k L_k^{n/2-1}(pi x) = 0
     basis = [max_coef[i]^(-1) * q[i] for i = 1:length(q)] #2d+1 sample points, because we have polynomials of that degree
-    samples = vcat(sample_points_rescaled_laguerre(2d+1) .+ (r)^2),sample_points_chebyshev(4d,r^2,5+r^2))
-    basis,samples = approximatefekete(basis,samples)
+    samples = vcat([x .+ r^2 for x in sample_points_rescaled_laguerre(2d+1)],sample_points_chebyshev(4d,r^2,5+r^2))
+    basis, samples = approximatefekete(basis,samples)
 
     PSD_part = Dict()
     free_part = Dict()
@@ -188,12 +188,12 @@ function cohnelkies(n,d,r=1;scale_var_fun = k->1, prec=512, model_prec=prec,ret_
     obj = Objective(spherevolume(n, BigFloat(r) / 2)*laguerre(0, BigFloat(n) / 2 - 1, BigFloat(0)),Dict(),Dict(Block(k)=> scale_var_fun(k)*spherevolume(n, BigFloat(r) / 2)*factorial(big(k))/BigFloat(pi)^k * laguerre(k, BigFloat(n) / 2 - 1, BigFloat(0)) for k=1:2d+1))
     #NOTE: these numbers become extremely large for large k. So no wonder that solvers have issues with that
 
-    sos = LowRankSOSProblem(false,[con1,con2],obj)
+    sos = LowRankSOSProblem(false, obj, [con1,con2])
     sdp = ClusteredLowRankSDP(sos)
     if ret_sdp
         return sdp
     else
-        return status,sol,time = solvesdp(sdp;prec=prec, kwargs...) #status, sol, time
+        return status, sol, time, errorcode = solvesdp(sdp;prec=prec, kwargs...) #status, sol, time
     end
 end
 

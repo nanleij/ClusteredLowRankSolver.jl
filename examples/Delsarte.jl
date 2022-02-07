@@ -4,7 +4,7 @@ using AbstractAlgebra, ClusteredLowRankSolver, BasesAndSamples, QuadGK
 
 export delsarte, Nspherical_cap_packing
 
-function delsarte(n, costheta, d, precision=512; all_free = false, kwargs...)
+function delsarte(n, d,costheta, precision=512; all_free = false, kwargs...)
     #set up the polynomial field
     setprecision(precision)
     FF = RealField
@@ -28,7 +28,7 @@ function delsarte(n, costheta, d, precision=512; all_free = false, kwargs...)
     objective = Objective(1, Dict(Block(k) => hcat([FF(1)]) for k=0:2d), Dict())
 
     #Construct the SOS problem: minimize the objective s.t. the constraint
-    sos = LowRankSOSProblem(false, [constraint], objective)
+    sos = LowRankSOSProblem(false, objective, [constraint])
 
     #Construct the SDP with or without using free variables for the a_k
     if all_free
@@ -37,9 +37,8 @@ function delsarte(n, costheta, d, precision=512; all_free = false, kwargs...)
         sdp = ClusteredLowRankSDP(sos)
     end
 
-    #Solve the SDP and return the status and the solution
-    status, sol,time, errorcode = solvesdp(sdp; kwargs...)
-    return status, sol
+    #Solve the SDP and return results
+    return status, sol,time, errorcode = solvesdp(sdp; kwargs...)
 end
 
 function weights(theta, n)
@@ -105,7 +104,7 @@ function Nspherical_cap_packing(n,d,thetas,N = length(thetas),precision=precisio
     objective = Objective(FF(0), Dict(), Dict(:M => FF(1)))
 
     #Construct the SOS - problem, minimizing the objective
-    sos = LowRankSOSProblem(false, constraints, objective)
+    sos = LowRankSOSProblem(false, objective, constraints)
 
     #construct and solve the SDP, with or without using free variables for the A_k
     if all_free
@@ -113,7 +112,7 @@ function Nspherical_cap_packing(n,d,thetas,N = length(thetas),precision=precisio
     else
         sdp = ClusteredLowRankSDP(sos)
     end
-    status, sol = solvesdp(sdp;solver_kwargs...)
+    status, sol, time, errorcode = solvesdp(sdp;solver_kwargs...)
 end
 
 
