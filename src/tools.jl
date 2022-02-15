@@ -6,7 +6,7 @@
 # - Arblib Cholesky without error bounds (approx_cholesky!)
 
 # extending LinearAlgebra.dot for the BlockDiagonal matrices and Arb(Ref)Matrices.
-# In principle dot(A,B) is also (mathematically) defined if they have different block sizes.
+# In principle dot(A,B) is also (mathematically) defined if they have different block sizes, and can be done more efficient than materalizing the matrices.
 # But in that case it is far more difficult to implement, so we just give the normal matrix results then
 function LinearAlgebra.dot(A::BlockDiagonal, B::BlockDiagonal)
     # tot = Arb(prec=precision(A))
@@ -106,93 +106,25 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
     return 1
 end
 
-function approx_cholesky_skipping!(A::ArbRefMatrix;prec=precision(A))
-    #The cholesky of Arblib, but with zeroed error bounds during the calculations
-    size(A,1) == size(A,2) || error("The matrix must be square")
 
-    n = size(A,1)
-    Arblib.get_mid!(A,A)
-    skipping = Int[]
-    for i=1:n
+function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
+    unique_idx = Int[]
+    for i=1:length(x)
+        #We compare this one with the elements we did already
+        duplicate = false
         for j=1:i-1
-            if j in skipping
-                A[i,j] = 0
-            else
-                for k=1:j-1
-                    approx_submul!(A[i,j], A[i,k], A[j,k], prec)
-                end
-                approx_div!(A[i,j], A[i,j], A[j,j], prec)
-                # Arblib.get_mid!(A[i,j],A[i,j])
+            if x[i] == x[j]
+                # this is a duplicate
+                duplicate = true
+                break
             end
         end
-        for k=1:i-1
-            approx_submul!(A[i,i], A[i,k], A[i,k], prec)
-        end
-        # Arblib.get_mid!(A[i,i], A[i,i])
-        if Arblib.is_positive(A[i,i]) == 0
-            push!(skipping, i)
-            # return 0
-            A[i,i] = 0
-        end
-        approx_sqrt!(A[i,i], A[i,i], prec)
-        # Arblib.get_mid!(A[i,i], A[i,i])
-    end
-
-    #zero the (strict) upper triangular part:
-    for i=1:n
-        for j=i+1:n
-            A[i,j] = 0
+        if !duplicate
+            push!(unique_idx,i)
         end
     end
-    return 1
+    return x[unique_idx]
 end
-
-# function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
-#     #The cholesky of Arblib, but with zeroed error bounds during the calculations
-#     size(A,1) == size(A,2) || error("The matrix must be square")
-#
-#     n = size(A,1)
-#
-#     for i=1:n
-#         for j=1:i-1
-#             for k=1:j-1
-#                 Arblib.submul!(A[i,j], A[i,k], A[j,k], prec)
-#             end
-#             if Arblib.is_positive(A[j,j]) != 0 #nonzero => A[j,j] > 0
-#                 Arblib.div!(A[i,j], A[i,j], A[j,j], prec)
-#             else
-#                 println("This case")
-#                 A[i,j] = 0
-#             end
-#             Arblib.get_mid!(A[i,j],A[i,j])
-#         end
-#         for k=1:i-1
-#             Arblib.submul!(A[i,i], A[i,k], A[i,k], prec)
-#         end
-#         Arblib.get_mid!(A[i,i], A[i,i])
-#         if Arblib.is_positive(A[i,i]) == 0
-#             if A[i,i]>-BigFloat(10)^-30 #almost 0
-#                 println("a slightly negative eigenvalue, we zero the row and column")
-#                 #we zero the row and column and skip
-#                 A[i,i] = 0
-#             else
-#                 println(A[i,i])
-#                 return 0
-#             end
-#         else
-#             Arblib.sqrt!(A[i,i], A[i,i], prec)
-#             Arblib.get_mid!(A[i,i], A[i,i])
-#         end
-#     end
-#
-#     #zero the (strict) upper triangular part:
-#     for i=1:n
-#         for j=i+1:n
-#             A[i,j] = 0
-#         end
-#     end
-#     return 1
-# end
 
 function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precision(C), opt::Int=0) where T<:Union{ArbMatrix, ArbRefMatrix}
     # matrix multiplication C = A*B, using multithreading.
@@ -204,9 +136,8 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
     #check dimensions
     @assert size(C,1) == size(A,1) && size(C,2) == size(B,2) && size(A,2) == size(B,1)
     #check for the special case of 1 thread:
-    if n==1 || size(A,1)*size(A,2)*size(B,2) * div(prec,256)< 1000
-        #TODO: determine up to what sizes (&what number of threads) running multithreaded is better than threaded.
-
+    if n==1 || size(A,1)*size(A,2)*size(B,2) * div(prec,256) < 1000
+        #TODO: determine up to what sizes (& what number of threads) running multithreaded is better than threaded.
         return Arblib.approx_mul!(C,A,B,prec=prec)
     end
     # determine how to do threading
@@ -298,7 +229,7 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
     Threads.@threads for i=1:n
         # cur_res = T(length(idx_rows[i]),length(idx_cols[i]),prec=prec)
         # I am not sure whether allocating inside a threaded loop + finalizers can give memory leakage.
-        #for ArbMatrices we would probably want to use the ref versions of the slice & set operations
+        # for ArbMatrices we would probably want to use the ref versions of the slice & set operations
         # Arblib.approx_mul!(part_res[i],A[idx_rows[i],idx_inner[i]],B[idx_inner[i],idx_cols[i]]) #do we want to use a different mul here?
         Arblib.approx_mul!(part_res[i],As[i],Bs[i])
         if n_inner > 1 # race conditions if we set/add to C directly, so we set the parts
@@ -317,11 +248,6 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
             Arblib.add!(C,C,res_matrices[i],prec=prec)
         end
     end
-    #if the matrices are large enough, call GC.gc(false) and malloc_trim
-    # if n*(size(C,1)*size(C,2) +size(A,1)*size(A,2)+size(B,1)*size(B,2))*prec/8/1024^3 > 1 # more than 1GB. Not sure
-    #     GC.gc(false)
-    #     malloc_trim(0)
-    # end
     return C
 end
 function thread_func_right!(C::T,A::T,B::T,func!;n=Threads.nthreads(),prec=precision(C)) where T <: AbstractMatrix
@@ -356,122 +282,13 @@ end
 
 function malloc_trim(k::Int)
     if Sys.islinux()
-        ccall(:malloc_trim,Cvoid,(Cint,),max(k,0)) #max because the parameter has to be at least 0
-        # println("Did the actual trim")
+        #max because the parameter has to be at least 0
+        ccall(:malloc_trim,Cvoid,(Cint,),max(k,0))
     end
 end
-
-
-function matmul_threaded!(C::T, A::T, B::T,idx_cols,part_res; n = Threads.nthreads(), prec=precision(C), opt::Int=0) where T<:Union{ArbMatrix, ArbRefMatrix}
-    # matrix multiplication C = A*B, using multithreading.
-    # Note that this is not the same as Arblib.mul_threaded!(), because that uses the classical matrix multiplication with flint threads
-    # We will have to tune the parameters, because Arblib does classical mat mul when some dimension of the matrix has size <= 40 (i.e. A has <= 40 rows or columns, or B has <=40 rows or columns)
-    # We might have very rectangular matrices (i.e., the number of rows much larger than the number of columns or vice versa), in which case it is easy do distribute over threads. When the number of remaining rows/columns can be below their cutoff due to our threading, we might want to consider using less threads? or just call the block version directly?
-
-    # n = Threads.nthreads()
-    #check dimensions
-    @assert size(C,1) == size(A,1) && size(C,2) == size(B,2) && size(A,2) == size(B,1)
-    #check for the special case of 1 thread:
-    # if n==1 || size(A,1)*size(A,2)*size(B,2) * div(prec,256)< 1000
-    #     #TODO: determine up to what sizes (&what number of threads) running multithreaded is better than threaded.
-    #
-    #     return Arblib.approx_mul!(C,A,B,prec=prec)
-    # end
-    # # determine how to do threading
-    # if !(opt in [1,2,3])
-    #     opt = argmax([size(B,2),size(A,1),size(A,2)])
-    # end
-
-    # opt == 1 => distribute the columns of B over threads (preferred above rows when equal due to julia/arb being column-major)
-    # opt == 2 => distribute the rows of A over threads
-    # opt == 3 => distribute the columns of A/rows of B over threads and add the results
-    # Option 1 and 2 are preferred above 3, because in those cases we don't have to add matrices. argmax gives the first maximal element
-    # for now, we'll just do one of the options. Maybe in some cases it is better to have for example a 3x3 grid instead of 1x9, so to use multiple options instead of 1
-    # That will just be generating different idx_rows, idx_cols and inner stuff
-
-    # if opt == 1
-    #     nc = size(B,2)
-    #     sizes = [div(nc,n) for i=1:n] .+ [div(nc,n)*n+i <= nc ? 1 : 0 for i=1:n]
-    #     idxs = [0, cumsum(sizes)...]
-    #     idx_cols = [idxs[i]+1:idxs[i+1] for i=1:n]
-    # else
-    #     idx_cols = [1:size(B,2) for i=1:n]
-    # end
-    # if opt == 2
-    #     nr = size(A,1)
-    #     # every thread gets at least floor(nr/n) rows, and we add the remaining parts until they are all distributed
-    #     sizes = [div(nr,n) for i=1:n] .+ [div(nr,n)*n+i <= nr ? 1 : 0 for i=1:n]
-    #     idxs = [0, cumsum(sizes)...]
-    #     idx_rows = [idxs[i]+1:idxs[i+1] for i=1:n]
-    # else
-    #     idx_rows = [1:size(A,1) for i=1:n]
-    # end
-    #
-    # #If we are threading over the outer part, we only need one result. So n_inner gives the number of results, idx_inner gives the indices thread i uses, res_idx gives which result is used
-    # if opt == 3
-    #     n_inner = n
-    #     nr = size(A,2)
-    #     # every thread gets at least floor(nr/n) rows, and we add the remaining parts until they are all distributed
-    #     sizes = [div(nr,n_inner) for i=1:n_inner] .+ [div(nr,n_inner)*n_inner+i <= nr ? 1 : 0 for i=1:n_inner]
-    #     idxs = [0, cumsum(sizes)...]
-    #     idx_inner = [idxs[i]+1:idxs[i+1] for i=1:n_inner]
-    #     res_idx = [i for i=1:n]
-    # else
-    #     n_inner = 1
-    #     idx_inner = [1:size(A,2) for i=1:n]
-    #     res_idx = [1 for i=1:n]
-    # end
-    #
-    # # Do the threaded matrix multiplication
-    # # We could use 1 matrix less if we use C with n_inner > 1 too.
-    # if n_inner > 1
-    #     res_matrices = [similar(C) for i=1:n_inner]
-    # end
-    # part_res = [T(length(idx_rows[i]),length(idx_cols[i]),prec=prec) for i=1:n] # when n_inner =1, this is max one copy of C
-    parts = [B[:,idx_cols[i]] for i=1:n]
-    Threads.@threads for i=1:n
-        # cur_res = T(length(idx_rows[i]),length(idx_cols[i]),prec=prec)
-        # I am not sure whether allocating inside a threaded loop + finalizers can give memory leakage.
-        #for ArbMatrices we would probably want to use the ref versions of the slice & set operations
-        Arblib.approx_mul!(part_res[i],A,parts[i]) #do we want to use a different mul here?
-        # if n_inner > 1 # race conditions if we set/add to C directly
-        #     res_matrices[res_idx[i]][idx_rows[i],idx_cols[i]] = part_res[i]
-        # else
-        C[:,idx_cols[i]] = part_res[i] # we actually would want to use a view/window of C[...,...] for the matrix product. But the Arblib window does not work nicely due to init and normal view does not work with ArbMatrices.
-        # end
-    end
-
-    # #add the results if needed
-    # if n_inner > 1
-    #     # this way we don't have to zero C, we do that implicitely.
-    #     # if n_inner>1, then we at least have 2 matrices to add
-    #     Arblib.add!(C,res_matrices[1],res_matrices[2])
-    #     for i=3:n_inner
-    #         Arblib.add!(C,C,res_matrices[i])
-    #     end
-    # end
-    # return C
-    nothing
-end
-
-function approx_mul!(C::T,A::T,B::T;prec=precision(C)) where T <: Union{ArbMatrix,ArbRefMatrix,AcbMatrix,AcbRefMatrix}
-    #maybe fix the memory bug. Not sure about threaded
-    Arblib.approx_mul!(C,A,B,prec=prec)
-    if Sys.islinux()
-        ccall(:malloc_trim,Cvoid,(Cint,),0)
-    end
-end
-function mul!(C::T,A::T,B::T;prec=precision(C)) where T <: Union{ArbMatrix,ArbRefMatrix,AcbMatrix,AcbRefMatrix}
-    #maybe fix the
-    Arblib.mul!(C,A,B,prec=prec)
-    if Sys.islinux()
-        ccall(:malloc_trim,Cvoid,(Cint,),0)
-    end
-end
-
 
 # For BlockDiagonals it is not clear what the precision is, because different blocks have potentially a different precision
 # So we make sure not to extend the Base.precision function for BlockDiagonals.
-#However, then we need to define precision for ArbMatrices and BigFloats
+# However, then we need to define precision for ArbMatrices and BigFloats
 precision(P::BlockDiagonal) = precision(P.blocks[1]) #we assume that all blocks have the same precision
 precision(x) = Base.precision(x) #for other things, just use the Base version

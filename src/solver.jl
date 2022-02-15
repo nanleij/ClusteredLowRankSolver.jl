@@ -32,23 +32,32 @@ function solvesdp(
     maxiterations = 500,
     beta_infeasible = Arb(3,prec=prec) / 10, # try to decrease mu by this factor when infeasible
     beta_feasible = Arb(1,prec=prec) / 10, # try to decrease mu by this factor when feasible
-    gamma = Arb(9,prec=prec) / 10, # what fraction of the maximum step size is used
+    gamma = Arb(9,prec=prec) / 10, # this fraction of the maximum possible step size is used
     omega_p = Arb(10,prec=prec)^(10), # initial size of the primal PSD variables
     omega_d = Arb(10,prec=prec)^(10), # initial size of the dual PSD variables
     duality_gap_threshold = Arb(10,prec=prec)^(-15), # how near to optimal does the solution need to be
     primal_error_threshold = Arb(10,prec=prec)^(-30),  # how feasible does the primal solution need to be
     dual_error_threshold = Arb(10,prec=prec)^(-30), # how feasible does the dual solution need to be
-    max_complementary_gap = Arb(10,prec=prec)^100, # the maximum of <X,Y>
-    need_primal_feasible = false,
-    need_dual_feasible = false,
+    max_complementary_gap = Arb(10,prec=prec)^100, # the maximum of <X,Y>/#rows(X)
+    need_primal_feasible = false, # terminate when the solution is primal feasible
+    need_dual_feasible = false, # terminate when the solution is dual feasible
     verbose = true, # false: print nothing, true: print information after each iteration
     step_length_threshold = Arb(10,prec=prec)^(-7), # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
-    initial_solutions = [], # initial solutions of the right format, in the order x,X,y,Y. This can give errors if the sizes are incorrect
-    #testing:
-    matmul_prec = prec, #precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
+    initial_solutions = [], # initial solutions of the right format, in the order x,X,y,Y. This can give errors if the sizes are incorrect or when the matrices are not PSD
+    #experimental & testing:
+    matmul_prec = prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
 	testing = false, # print the times of the first two iterations. This is for testing purposes
 )
     # the default values mostly come from Simmons-Duffin original paper, or from the default values of SDPA-GMP (slow but stable mode)
+
+	#NOTE: Because we use Arb through Arblib.jl, the code might look a bit like C instead of Julia.
+	# There is an issue on the Arblib.jl GitHub about using the MutableArithmetic api to use e.g.
+	#	MA.@rewrite a + b + c
+	# instead of
+	#	Arblib.add!(a,a,b)
+	#	Arblib.add!(a,a,c)
+	# which might make it easier to read.
+
 
     # convert to Arbs & the required precision:
     omega_p,
@@ -73,7 +82,7 @@ function solvesdp(
             prec = prec,
         )
     )
-    sdp = convert_to_prec(sdp,prec) # convert to the precision we use in the solver.
+    sdp = convert_to_prec(sdp,prec) # convert the sdp to the precision we use in the solver.
 
     # The algorithm:
     # initialize:
@@ -198,8 +207,9 @@ function solvesdp(
     alpha_p = alpha_d = Arb(0, prec = prec)
     mu = dot(X, Y) / size(X, 1)
 
-    # Preallocation. In principle we can collect them in a struct or something like that and use them that way. Then we only need to give e.g. Variables and Preallocated to functions instead of e.g. P,p,d, dX,dY,dx,dy
-    # We overwrite R, X_inv,S and A_Y in each iteration.
+    # Preallocation. In principle we can collect them in a struct or something like that and use them that way.
+	# Then we only need to give e.g. Variables and Preallocated to functions instead of e.g. P,p,d, dX,dY,dx,dy
+    # We overwrite R, X_inv, S and A_Y in each iteration.
     R = similar(X)
     X_inv = similar(X)
     S = [ArbRefMatrix(size(sdp.c[j],1), size(sdp.c[j],1), prec = prec) for j in eachindex(sdp.c)]
@@ -259,6 +269,7 @@ function solvesdp(
             break
         end
         GC.gc(false) #not sure if needed
+
         #step 3
         mu = dot(X, Y) / size(X, 1)
         mu_p = pd_feas ? zero(mu) : beta_infeasible * mu # zero(mu) keeps the precision
@@ -267,6 +278,7 @@ function solvesdp(
             error_code[1] = 3
             break
         end
+
         #step 4
         time_R = @elapsed begin
             compute_residual_R!(R, X, Y, mu_p,threadinginfo)
@@ -289,7 +301,8 @@ function solvesdp(
         end
 
 
-        #Compute the decomposition which is used to solve the system of equations for the search directions. We also keep A_Y, which is used for <A_*, Y>
+        # Compute the decomposition which is used to solve the system of equations for the search directions.
+		# We also keep A_Y, which is used for <A_*, Y>
         allocs[1] += @allocated begin
             time_decomp = @elapsed begin
                 time_schur, time_cholS, time_LinvB, time_Q, time_cholQ =
@@ -306,7 +319,7 @@ function solvesdp(
         end
 
 
-        #compute the predictor search direction
+        # Compute the predictor search direction
         allocs[3] += @allocated begin
             time_predictor_dir = @elapsed begin
                 times_predictor_in =
@@ -315,7 +328,7 @@ function solvesdp(
         end
 
 
-        #step 5: compute mu_c
+        # step 5: compute mu_c
         r = dot(X + dX, Y + dY) / (mu * size(X, 1))
         beta = r < 1 ? r^2 : r
         beta_c =
@@ -323,8 +336,8 @@ function solvesdp(
             max(beta_infeasible, beta)
         mu_c = beta_c * mu
 
-        #step 6
-        #compute R_c
+        # step 6: the corrector search direction
+		# Compute R_c
         time_R += @elapsed begin
             compute_residual_R!(R, X, Y, mu_c, dX, dY, threadinginfo)
         end
@@ -337,7 +350,7 @@ function solvesdp(
             dual_error_threshold)
 
 
-        #Compute the corrector search direction
+        # Compute the corrector search direction
         allocs[4] += @allocated begin
             time_corrector_dir = @elapsed begin
                 times_corrector_in =
@@ -346,7 +359,7 @@ function solvesdp(
         end
 
 
-        #step 7: compute the step lengths
+        # step 7: compute the step lengths
         allocs[5] += @allocated begin
             time_alpha = @elapsed begin
                 alpha_p = compute_step_length(X, dX, gamma, threadinginfo)
@@ -356,7 +369,7 @@ function solvesdp(
 
 
 
-        # if the precision is not high enough, the step lengths might be extremely low (e.g. 10^-8 or lower)
+        # if the precision is not high enough, or if there are other problems, the step lengths might be extremely low (e.g. 10^-8 or lower)
         if min(BigFloat(alpha_d),BigFloat(alpha_p)) < step_length_threshold
             min_step = min(Float64(alpha_d),Float64(alpha_p))
             println("The step length (", min_step, ") was too short, possible reasons include precision issues and infeasible problems.")
@@ -420,7 +433,7 @@ function solvesdp(
             println("X inv:", time_inv, ". R:", time_R, ". residuals p,P,d:", time_res)
         end
         # print the objectives of the start of the iteration, imitating simmons duffin
-        #I think this is a bit weird, because we only know the step lengths at the end of the iteration
+        # This might be a bit weird, because we only know the step lengths at the end of the iteration
         if verbose
 			@printf(
                 "%5d %8.1f %11.3e %11.3e %11.3e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e\n",
@@ -439,7 +452,7 @@ function solvesdp(
             )
         end
 
-        #Compute the new objectives, for the new iteration
+        # Compute the new objectives, for the new iteration
         allocs[6]+= @allocated begin
             p_obj = compute_primal_objective(sdp, x)
             d_obj = compute_dual_objective(sdp,y, Y)
@@ -447,10 +460,7 @@ function solvesdp(
         end #of allocs
 
 
-        #step 2, preparation for new loop iteration
         iter += 1
-
-
     end
     catch e
         println("A $(typeof(e)) occurred")
@@ -537,12 +547,12 @@ function solvesdp(
     end
 
 
-    #get the status from the results
+    # Get the status from the results
     if pd_feas && dual_gap < duality_gap_threshold
-        #optimal
+        # optimal
         status = Optimal()
     elseif (pd_feas && dual_gap < 10^-8) || (primal_error < 10^-15 && dual_error < 10^-15 && dual_gap < 10^-8)
-        #How do we define near optimal?
+        # How do we define near optimal? Maybe we should remove this
         status = NearOptimal()
     elseif pd_feas
         status = Feasible()
@@ -630,12 +640,12 @@ end
 
 """Compute the dual residue d = c - <A_*, Y> - By"""
 function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right)
-    # d::ArbRefMatrix = vcat(sdp.c...)
     cur_idx = 0
     for j in eachindex(sdp.c)
         d[cur_idx+1:cur_idx+size(sdp.c[j],1),1] = sdp.c[j]
         cur_idx += size(sdp.c[j],1)
     end
+	# Maybe we can do this a bit more efficient, without copying sdp.B[j] into the matrix B
     B::ArbRefMatrix = vcat(sdp.B...)
     Arblib.sub!(d,d,Arblib.approx_mul!(similar(d),B,y))
     Arblib.sub!(d,d,trace_A(sdp,Y,vecs_left,vecs_right))
@@ -648,9 +658,9 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vec
     compute_weighted_A!(P, sdp, x,vecs_left)
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.sub!(P.blocks[j].blocks[l],P.blocks[j].blocks[l],X.blocks[j].blocks[l])
-        if sdp.maximize  #normal
+        if sdp.maximize  # normal
             Arblib.sub!(P.blocks[j].blocks[l],P.blocks[j].blocks[l], sdp.C.blocks[j].blocks[l])
-        else #we use -C in the program when minimizing
+        else # we use -C in the program when minimizing
             Arblib.add!(P.blocks[j].blocks[l],P.blocks[j].blocks[l], sdp.C.blocks[j].blocks[l])
         end
         Arblib.get_mid!(P.blocks[j].blocks[l], P.blocks[j].blocks[l])
@@ -678,7 +688,7 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vec
         Arblib.sub!(p,p,sdp.b)
     end
     Arblib.get_mid!(p, p)
-    return nothing #we modify P,p and d
+    return nothing # we modify P,p and d
 end
 
 """Determine whether the main loop should terminate or not"""
@@ -723,7 +733,7 @@ end
 
 """Compute the residual R, with or without second order term """
 function compute_residual_R!(R, X, Y, mu,threadinginfo)
-    # R = mu*I - X Y
+    # R = mu*I - X * Y
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.one!(R.blocks[j].blocks[l])
         Arblib.mul!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], mu)
@@ -748,25 +758,6 @@ function compute_residual_R!(R, X, Y, mu, dX, dY,threadinginfo)
         Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], temp)
     end
     return R
-end
-
-function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
-    unique_idx = Int[]
-    for i=1:length(x)
-        #We compare this one with the elements we did already
-        duplicate = false
-        for j=1:i-1
-            if x[i] == x[j]
-                # this is a duplicate
-                duplicate = true
-                break
-            end
-        end
-        if !duplicate
-            push!(unique_idx,i)
-        end
-    end
-    return x[unique_idx]
 end
 
 function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precision(sdp.b))

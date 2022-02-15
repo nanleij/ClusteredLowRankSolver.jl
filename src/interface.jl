@@ -131,6 +131,7 @@ end
     approximatefekete(basis, samples) -> basis, samples
 
 Compute approximate fekete points based on samples and a corresponding orthogonal basis.
+The basis consists of sampled polynomials, sampled at `samples`
 
 This preserves a degree ordering of `basis` if present.
 """
@@ -201,8 +202,8 @@ end
     Constraint(constant, matrixcoeff, freecoeff, samples[, scalings])
 
 Models a polynomial constaint of the form
-    constant(x) = ∑_block < block, matrixcoeff[block](x) > + ∑_freevar freecoeff[freevar](x)*freevar
-sampled on the elements of samples.
+    constant = ∑_block < block, matrixcoeff[block] > + ∑_freevar freecoeff[freevar]*freevar
+with samples.
 
 Arguments:
     constant::MPolyElem
