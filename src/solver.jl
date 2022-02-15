@@ -12,18 +12,29 @@ end
 Solve the clustered SDP with low-rank constraint matrices.
 
 Solve the following sdp:
-    'max/min ∑_j <C^j, Y^j> + b^T y
+
+    max/min ∑_j <C^j, Y^j> + b^T y
     s.t.    <A_*^j,Y^j> + B^j y = c^j
-            Y^j ⪰ 0'
-where we optimize over the free variables 'y' and the PSD block matrices
-'Y^j = diag(Y^{j,1}, ..., Y^{j,L_j})', and '<A_*^j, Y^j> = (<A_p^j, Y^j>)_{p=1,...,P_j}'.
-The matrices A^j_p have the same block structure as Y^j. Every A^{j,l} can have several equalsized blocks A^{j,l}[r,s].
+            Y^j ⪰ 0
+
+where we optimize over the free variables `y` and the PSD block matrices
+`Y^j = diag(Y^{j,1}, ..., Y^{j,L_j})`, and `<A_*^j, Y^j> = (<A_p^j, Y^j>)_{p=1,...,P_j}`.
+The matrices `A^j_p` have the same block structure as `Y^j`. Every `A^{j,l}` can have several equal-sized blocks `A^{j,l}[r,s]`.
 The smallest blocks have a low rank structure.
 
-Important keyword arguments which are not clear from the name:
-    - gamma: the step length reduction; a maximum step length of α reduces to a step length of max(gamma*α,1)
-    - beta_(in)feasible: the amount mu is tried to be reduced by in each iteration, for (in)feasible solutions
-    - omega_p/d: the starting matrix variable for the primal/dual is omega_p/d*I
+Keyword arguments:
+	- `prec` (default: `precision(BigFloat)`): the precision used
+    - `gamma` (default: `0.9`): the step length reduction; a maximum step length of α reduces to a step length of `max(gamma*α,1)`
+    - `beta_(in)feasible` (default: `0.1` (`0.3`)): the amount mu is tried to be reduced by in each iteration, for (in)feasible solutions
+    - `omega_p/d` (default: `10^10`): the starting matrix variable for the primal/dual is `omega_p/d*I`
+	- `maxiterations` (default: `500`): the maximum number of iterations
+	- `duality_gap_threshold` (default: `10^-15`): how near to optimal the solution needs to be
+	- `primal/dual_error_threshold` (default:`10^-30`): how feasible the primal/dual solution needs to be
+	- `max_complementary_gap` (default: `10^100`): the maximum of <X,Y>/#rows(X) allowed
+	- `need_primal_feasible/need_dual_feasible` (default: `false`): terminate when the solution is primal/dual feasible
+	- `verbose` (default: `true`): print information after every iteration if true
+	- `step_length_threshold` (default: `10^-7`): the minimum step length allowed
+	- `initial_solutions` (default: `[]`): if x,X,y,Y are given, use that instead of omega_p/d * I for the initial solutions
 """
 function solvesdp(
     sdp::ClusteredLowRankSDP,
