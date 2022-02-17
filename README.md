@@ -5,15 +5,7 @@
 [![Coverage](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl)
 
 ## Clustered Low-Rank Semidefinite Programs
-A clustered low-rank semidefinite program is defined as
-```math
-\begin{aligned}
-	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
-	\text{s.t.} \quad & \langle Y^j, A^j_* \rangle + B^T y = c \\
-	& Y^j \succeq 0
-\end{aligned}
-```
-where ``\langle Y^j, A^j_* \rangle`` denotes the vector with entries ``\langle Y^j, A^j_p \rangle``, and the matrices ``A^j_p`` have a low rank structure. See the [manual]() for a detailed description of the low-rank structure which is allowed.
+A clustered low-rank semidefinite program is a semidefinite program in equality form including free scalar variables, where the constraint matrices corresponding to positive semidefinite variables have a low-rank structure. The program is clustered in the sense that the positive semidefinite matrix variables can be partitioned into subsets such that each subset is purely used in one corresponding subset of a partitioning of the constraints. In other words, constraints corresponding to different clusters use different positive semidefinite matrix variables.
 An example where such a clustered low-rank SDP appears is by sampling (low-rank) sums-of-squares constraints in an semidefinite program. In the interface we focus on this application.
 
 
