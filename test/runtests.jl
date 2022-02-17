@@ -5,6 +5,11 @@ using Test
     #for these tests we need to register BasesAndSamples first. Or we need to make it a submodule maybe
     @testset "examples" begin
         # these examples test nearly everything
+        include("../examples/PolyOpt.jl")
+        using  .PolyOpt
+        _,sol,_,_ = min_f(2)
+        @test sol.dual_objective ≈ -2.113 atol=1e-2
+
         include("../examples/Delsarte.jl")
         using .Delsarte
         _, sol, _, _ = delsarte(3, 10, 1//2)

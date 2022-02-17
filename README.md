@@ -5,8 +5,15 @@
 [![Coverage](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl)
 
 ## Clustered Low-Rank Semidefinite Programs
-TODO: Add description of the clustered low-rank SDP
-
+A clustered low-rank semidefinite program is defined as
+```math
+\begin{aligned}
+	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
+	\text{s.t.} \quad & \langle Y^j, A^j_* \rangle + B^T y = c \\
+	& Y^j \succeq 0
+\end{aligned}
+```
+where ``\langle Y^j, A^j_* \rangle`` denotes the vector with entries ``\langle Y^j, A^j_p \rangle``, and the matrices ``A^j_p`` have a low rank structure. See the [manual]() for a detailed description of the low-rank structure which is allowed.
 An example where such a clustered low-rank SDP appears is by sampling (low-rank) sums-of-squares constraints in an semidefinite program. In the interface we focus on this application.
 
 
@@ -18,7 +25,7 @@ After installing Julia, run Julia and install the package with e.g.
 Press `backspace` to go back to the REPL from the package environment.
 
 ## Usage
-After installing, use the package with `using ClusteredLowRankSolver`. See the [manual]() for instructions on using the interface. [Below](#Examples) we show how to model a small polynomial optimization problem. 
+After installing, use the package with `using ClusteredLowRankSolver`. See the [manual]() for instructions on using the interface. [Below](#Examples) we show how to model a small polynomial optimization problem.
 
 To use `n` threads, start Julia with the option `-t n`.
 On Windows using multiple threads may lead to crashes or wrong answers when using free variables.
