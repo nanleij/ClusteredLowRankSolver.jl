@@ -144,7 +144,7 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
     end
     objective = Objective(1, obj, Dict())
 
-    sos = LowRankSOSProblem(false, objective, [univariatecon, trivariatecon])
+    sos = LowRankPolProblem(false, objective, [univariatecon, trivariatecon])
     if verbose
         println("Converting to a clustered low-rank SDP...")
     end

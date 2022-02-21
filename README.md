@@ -5,7 +5,7 @@
 [![Coverage](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl)
 
 ## Clustered Low-Rank Semidefinite Programs
-A clustered low-rank semidefinite program is a semidefinite program in equality form including free scalar variables, where the constraint matrices corresponding to positive semidefinite variables have a low-rank structure. The program is clustered in the sense that the positive semidefinite matrix variables can be partitioned into subsets such that each subset is purely used in one corresponding subset of a partitioning of the constraints. In other words, constraints corresponding to different clusters use different positive semidefinite matrix variables.
+A clustered low-rank semidefinite program is a semidefinite program in equality form including free scalar variables, where the constraint matrices corresponding to positive semidefinite variables have a low-rank structure. The program is clustered in the sense two constraints in different clusters do not use the same positive semidefinite matrix variables.
 An example where such a clustered low-rank SDP appears is by sampling (low-rank) sums-of-squares constraints in an semidefinite program. In the interface we focus on this application.
 
 
@@ -17,7 +17,7 @@ After installing Julia, run Julia and install the package with e.g.
 Press `backspace` to go back to the REPL from the package environment.
 
 ## Usage
-After installing, use the package with `using ClusteredLowRankSolver`. See the [manual]() for instructions on using the interface. [Below](#Examples) we show how to model a small polynomial optimization problem.
+After installing, use the package with `using ClusteredLowRankSolver`. See the [documentation](https://nanleij.github.io/ClusteredLowRankSolver.jl/stable) for instructions on using the interface. Below we show how to model a small polynomial optimization problem.
 
 To use `n` threads, start Julia with the option `-t n`.
 On Windows using multiple threads may lead to crashes or wrong answers when using free variables.
@@ -62,7 +62,7 @@ sdp = ClusteredLowRankSDP(sos)
 status, result = solvesdp(sdp)
 ```
 
-More examples are available in the [manual](). For the code examples described in the manual and more, see [examples]().
+More examples are available in the [documentation](https://nanleij.github.io/ClusteredLowRankSolver.jl/stable). For the code examples described in the documentation and more, see the [examples](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples) folder.
 
 
 ## Citing ClusteredLowRankSolver

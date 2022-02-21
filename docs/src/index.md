@@ -1,24 +1,52 @@
 # ClusteredLowRankSolver.jl
 
-[`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) provides a primal-dual interior point method for solving clustered low-rank semidefinite programs. This can be used for (semidefinite) programs with polynomial inequality constraints, which can be rewritten in terms of sum-of-squares polynomials. See the [manual]() for a detailed description of the problems and the usage of the solver.
-
-## Citation
-
-If you use `ClusteredLowRankSolver.jl` in work that results in a publication, consider citing
- - D. de Laat and N.M. Leijenhorst, *Solving Clustered Low-Rank Semidefinite Programs arising from Polynomial Optimization*, arXiv:
+[`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) provides a primal-dual interior point method for solving clustered low-rank semidefinite programs. This can be used for (semidefinite) programs with polynomial inequality constraints, which can be rewritten in terms of sum-of-squares polynomials.
 
 ## Clustered Low-Rank Semidefinite Programs
-
+A clustered low-rank semidefinite program is defined as
 ```math
 \begin{aligned}
 	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
 	\text{s.t.} \quad & \langle Y^j, A^j_* \rangle + B^T y = c \\
-	& Y^j \succeq 0
+	& Y^j \succeq 0,
 \end{aligned}
 ```
+where ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the low-rank structure
+```math
+	A_p^j = \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)} \otimes E_{l,l}^{L_j}.
+```
+The matrices ``A_p^j(l;r, s)`` are of low rank and ``A_p^j(l;r, s)^{\sf T} =  A_p^j(l;s, r)``. Here ``E_{r,s}^n`` is the ``n \times n`` matrix with a one at position ``(r,s)`` and zeros otherwise.
+
+One example where this structure shows up is when using polynomial constraints which are converted to semidefinite programming constraints by sampling.
+Such a semidefinite program with low-rank polynomial constraints is defined as
+```math
+\begin{aligned}
+	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
+	\text{s.t.} \quad & \langle Y^j, A^j_*(x) \rangle + B^T(x) y = c(x) \\
+	& Y^j \succeq 0,
+\end{aligned}
+```
+where ``A^j_p(x)`` have the same structure as before but have now polynomials as entries. This can be obtained from polynomial inequality constraints by sum-of-squares characterizations. The interface currently focusses on such semidefinite programs with polynomial constraints.
+
+The implementations contains data types for a clustered low-rank semidefinite programs (`ClusteredLowRankSDP`) and semidefinite programs with low-rank polynomial constraints (`LowRankPolProblem`), where a `LowRankPolProblem` can be converted into a `ClusteredLowRankSDP`. The implementation also contains data types for representing low-rank (polynomial) matrices as well as functions and data types for working with samples and sampled polynomials.
+
+## Installation
+The solver is written in Julia, and has been registered as a Julia package. Typing `using ClusteredLowRankSolver` in the REPL will prompt installation if the package has not been installed yet (from Julia 1.7 onwards).
 
 ## Documentation
 
-```@autodocs
-Modules = [ClusteredLowRankSolver]
+### Solver
+```@docs
+solvesdp
+```
+
+### Interface
+```@docs
+ClusteredLowRankSDP
+LowRankPolProblem
+Objective
+Constraint
+LowRankMatPol
+Block
+approximatefekete
 ```

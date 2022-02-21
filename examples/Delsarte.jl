@@ -28,7 +28,7 @@ function delsarte(n, d,costheta, precision=512; all_free = false, kwargs...)
     objective = Objective(1, Dict(Block(k) => hcat([FF(1)]) for k=0:2d), Dict())
 
     #Construct the SOS problem: minimize the objective s.t. the constraint
-    sos = LowRankSOSProblem(false, objective, [constraint])
+    sos = LowRankPolProblem(false, objective, [constraint])
 
     #Construct the SDP with or without using free variables for the a_k
     if all_free
@@ -104,7 +104,7 @@ function Nspherical_cap_packing(n,d,thetas,N = length(thetas),precision=precisio
     objective = Objective(FF(0), Dict(), Dict(:M => FF(1)))
 
     #Construct the SOS - problem, minimizing the objective
-    sos = LowRankSOSProblem(false, objective, constraints)
+    sos = LowRankPolProblem(false, objective, constraints)
 
     #construct and solve the SDP, with or without using free variables for the A_k
     if all_free

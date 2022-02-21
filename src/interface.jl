@@ -150,9 +150,9 @@ polys = Union{MPolyElem, SampledMPolyElem}
 """
     LowRankMat(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
 
-The matrix ∑_i eigenvalues[i]*rightevs[i]*leftevs[i]'.
+The matrix ``∑_i λ_i v_i w_i^T``.
 
-If `leftevs` is not specified, use `leftevs = rightevs`. The elements of the `Vectors` are
+If `leftevs` is not specified, use `leftevs = rightevs`.
 """
 struct LowRankMatPol
     eigenvalues::Vector{polys}
@@ -202,15 +202,17 @@ end
     Constraint(constant, matrixcoeff, freecoeff, samples[, scalings])
 
 Models a polynomial constaint of the form
-    constant = ∑_block < block, matrixcoeff[block] > + ∑_freevar freecoeff[freevar]*freevar
-with samples.
+```math
+    c(x) = ∑_l < Y^l_{r,s}, A^l_{r,s}(x) > + ∑_i y_i*B_i(x)
+```
+with samples, where `r,s` are defined by the `Block` structure with `l` as first argument
 
 Arguments:
-    constant::MPolyElem
-    matrixcoeff::Dict(Block, LowRankMatPol)
-    freecoeff::Dict(Any, MPolyElem)
-    samples::Vector{Vector}
-    scalings::Vector
+  - `constant::MPolyElem`
+  - `matrixcoeff::Dict{Block, LowRankMatPol}`
+  - `freecoeff::Dict{Any, MPolyElem}`
+  - `samples::Vector{Vector}`
+  - `scalings::Vector`
 """
 struct Constraint
     constant::MPolyElem
@@ -225,7 +227,7 @@ Constraint(constant,matrixcoeff,freecoeff,samples) = Constraint(constant,matrixc
 """
     Objective(constant, matrixcoeff::Dict{Block, Matrix}, freecoeff::Dict)
 
-The objective for the LowRankSOSProblem
+The objective for the LowRankPolProblem
 """
 struct Objective
     constant
@@ -233,7 +235,12 @@ struct Objective
     freecoeff::Dict
 end
 
-struct LowRankSOSProblem #Maybe we  need to rename this to e.g. LowRankPolProblem
+"""
+    LowRankPolProblem(maximize, objective, constraints)
+
+Combine the objective and constraints into a low-rank polynomial problem
+"""
+struct LowRankPolProblem #Maybe we  need to rename this to e.g. LowRankPolProblem
     maximize::Bool
     objective::Objective
     constraints::Vector{Constraint}
@@ -262,17 +269,17 @@ function ClusteredLowRankSDP(maximize,constant,A,B,c,C,b)
 end
 
 """
-    ClusteredLowRankSDP(sos::LowRankSOSProblem[, as_free])
+    ClusteredLowRankSDP(sos::LowRankPolProblem[, as_free::Vector])
 
-Define a ClusteredLowRankSDP based on the LowRankSOSProblem sos.
+Define a ClusteredLowRankSDP based on the LowRankPolProblem sos.
 
-The PSD variables defined by the keys `as_free` will be modelled as extra free variables,
+The PSD variables defined by the keys in the vector `as_free` will be modelled as extra free variables,
 with extra constraints to ensure that they are equal to the entries of the PSD variables.
 Keyword arguments:
-    prec (default: precision(BigFloat)) - the precision of the result
-    verbose (default: false) -  print progress to the standard output
+  - `prec` (default: precision(BigFloat)) - the precision of the result
+  - `verbose` (default: false) -  print progress to the standard output
 """
-function ClusteredLowRankSDP(sos::LowRankSOSProblem, as_free = []; prec=precision(BigFloat),verbose = false)
+function ClusteredLowRankSDP(sos::LowRankPolProblem, as_free = []; prec=precision(BigFloat),verbose = false)
     # the blocks in as_free will be modelled as extra variables
     if length(as_free) > 0
         if verbose

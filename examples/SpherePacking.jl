@@ -15,10 +15,11 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
     # min M
     # M - f_ii(0)>=0 for i=1:N
     # F(f)(0) - (vol B(r_i)^1/2 vol B(r_j)^1/2 )_{ij=1}^N >=0
-    # F(f)(t) >=0 for t>=0
+    # F(f)(t) ⪰ 0 for t>=0
     # -f(w)_ij >= 0 for w>=r_i+r_j for i=1:N j=1:i (symmetric)
-    # With f(x) = sum_k a_k k!/pi^k L_k^{n/2-1}(pi ||x||^2)
+    # With f(x) = sum_k a_k k!/π^k L_k^{n/2-1}(π ||x||^2)
     # and thus F(f)(x) = sum_k a_k x^{k}
+    # where a_k are symmetric NxN matrices
     # min M
     # s.t.  - (vol B(r_i)^1/2 vol B(r_j)^1/2 )_{ij=1}^N + \sum_i \sum_j a_{ij,0} E_ij >= 0 (G={1}) (NxN)
     #       0 + sum_k sum_i sum_j a_{ij,k} E_{ij} x^k >= 0        (G = {1,x}) (NxN)
@@ -46,15 +47,15 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
         end
     end
 
-    #We orthogonalize the laguerre basis with respect to the sample points
+    # We orthogonalize the laguerre basis with respect to the sample points
     q = basis_laguerre(2d+1, BigFloat(n) / 2 - 1, BigFloat(2 * pi) * x)
     max_coef = [max(coefficients(q[i])...) for i = 1:length(q)]
     basis = [max_coef[i]^(-1) * q[i] for i = 1:length(q)]
-    samples = sample_points_rescaled_laguerre(2d+1) #TODO test with different sample points. Now they're fixed already and we only improve the basis
+    samples = sample_points_rescaled_laguerre(2d+1)
     basis, samples = approximatefekete(basis,samples)
 
     #constraint 2: sum_k a_{ij,k} x^k = <SOS21_ij, bb^T> + <SOS22_ij, xbb^T>
-    #(Polynomial matrix constraint: constraint for each entry)
+    #(Polynomial matrix constraint gives a polynomial constraint for each entry)
     con2 = []
     for i=1:N
         for j=1:i
@@ -93,7 +94,7 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
             for k=0:2d+1
                 free_part[Block(k,i,j)] = factorial(big(k))/BigFloat(pi)^k * laguerre(k, BigFloat(n) / 2 - 1, BigFloat(pi)*x)
             end
-            #since we use 2d+1, we only need the constant of this SOS matrix
+            #since we use 2d+1, we only need the constant of this SOS matrix; in practice it is always the 0 matrix
             PSD_part[Block((:SOS31,i,j))] = LowRankMatPol([R(1)],[basis[1:1]])
             PSD_part[Block((:SOS32,i,j))] = LowRankMatPol([x-(r[i]+r[j])^2],[basis[1:d+1]])
             push!(con3,Constraint(R(0),PSD_part,free_part,samples,[scaling_fun(s...) for s in samples]))
@@ -116,7 +117,7 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
     #objective: M
     obj = Objective(0,Dict(),Dict(:M=>1))
 
-    sos = LowRankSOSProblem(false,obj,[con1...,con2...,con3...,con4...])
+    sos = LowRankPolProblem(false,obj,[con1...,con2...,con3...,con4...])
 
     sdp = ClusteredLowRankSDP(sos)
     if ret_sdp
@@ -188,7 +189,7 @@ function cohnelkies(n,d,r=1;scale_var_fun = k->1, prec=512, model_prec=prec,ret_
     obj = Objective(spherevolume(n, BigFloat(r) / 2)*laguerre(0, BigFloat(n) / 2 - 1, BigFloat(0)),Dict(),Dict(Block(k)=> scale_var_fun(k)*spherevolume(n, BigFloat(r) / 2)*factorial(big(k))/BigFloat(pi)^k * laguerre(k, BigFloat(n) / 2 - 1, BigFloat(0)) for k=1:2d+1))
     #NOTE: these numbers become extremely large for large k. So no wonder that solvers have issues with that
 
-    sos = LowRankSOSProblem(false, obj, [con1,con2])
+    sos = LowRankPolProblem(false, obj, [con1,con2])
     sdp = ClusteredLowRankSDP(sos)
     if ret_sdp
         return sdp

@@ -5,7 +5,7 @@ using AbstractAlgebra, IterTools, LinearAlgebra
 using Printf, Arblib, BlockDiagonals
 using KrylovKit
 
-export LowRankMat, LowRankMatPol, Block, Constraint, Objective,	 LowRankSOSProblem, ClusteredLowRankSDP, solvesdp, approximatefekete,SampledMPolyElem,optimal
+export LowRankMat, LowRankMatPol, Block, Constraint, Objective,	 LowRankPolProblem, ClusteredLowRankSDP, solvesdp, approximatefekete,SampledMPolyElem,optimal
 export solvesdp, convert_to_prec, SolverFailure
 
 import LinearAlgebra: dot, transpose
