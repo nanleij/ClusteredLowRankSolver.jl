@@ -203,7 +203,7 @@ end
 
 Models a polynomial constaint of the form
 ```math
-    c(x) = ∑_l < Y^l_{r,s}, A^l_{r,s}(x) > + ∑_i y_i*B_i(x)
+    c(x) = ∑_l ⟨ Y^l_{r,s}, A^l_{r,s}(x) ⟩ + ∑_i y_i B_i(x)
 ```
 with samples, where `r,s` are defined by the `Block` structure with `l` as first argument
 
