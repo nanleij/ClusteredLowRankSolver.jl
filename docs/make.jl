@@ -3,7 +3,7 @@ push!(LOAD_PATH,"../src/")
 using ClusteredLowRankSolver
 using DocumenterCitations
 
-bib = CitationBibliography("references.bib", sorting=:nyt)
+bib = CitationBibliography(joinpath(@__DIR__, "references.bib"), sorting=:nyt)
 
 makedocs(bib,
     sitename = "ClusteredLowRankSolver.jl Documentation",
