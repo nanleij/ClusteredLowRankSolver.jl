@@ -1,7 +1,7 @@
 using Documenter
 push!(LOAD_PATH,"../src/")
 using ClusteredLowRankSolver
-using DocumenterCitations, Bibliography
+using DocumenterCitations
 
 bib = CitationBibliography("references.bib", sorting=:nyt)
 
