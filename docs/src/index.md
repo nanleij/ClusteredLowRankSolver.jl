@@ -28,10 +28,11 @@ Such a semidefinite program with low-rank polynomial constraints is defined as
 ```
 where ``A^j_p(x)`` have the same structure as before but have now polynomials as entries. This can be obtained from polynomial inequality constraints by sum-of-squares characterizations. The interface currently focusses on such semidefinite programs with polynomial constraints.
 
-The implementations contains data types for a clustered low-rank semidefinite programs (`ClusteredLowRankSDP`) and semidefinite programs with low-rank polynomial constraints (`LowRankPolProblem`), where a `LowRankPolProblem` can be converted into a `ClusteredLowRankSDP`. The implementation also contains data types for representing low-rank (polynomial) matrices as well as functions and data types for working with samples and sampled polynomials.
+The implementations contains data types for a clustered low-rank semidefinite programs (`ClusteredLowRankSDP`) and semidefinite programs with low-rank polynomial constraints (`LowRankPolProblem`), where a `LowRankPolProblem` can be converted into a `ClusteredLowRankSDP`. The implementation also contains data types for representing low-rank (polynomial) matrices as well as functions and data types for working with samples and sampled polynomials. 
 
 ## Installation
 The solver is written in Julia, and has been registered as a Julia package. Typing `using ClusteredLowRankSolver` in the REPL will prompt installation if the package has not been installed yet (from Julia 1.7 onwards).
+
 
 ## Documentation
 

@@ -1,5 +1,5 @@
 # Multivariate polynomial optimization using symmetry reduction
-In this example, we consider minimizing a multivariate polynomial with ``S_3`` symmetries. The example is inspirated by example 7.1 from [gatermann-symmetry-2004](@cite). We consider the polynomial
+In this example, we consider minimizing a multivariate polynomial with ``S_3`` symmetries. The example is inspirated by example 7.1 from [gatermann-symmetry-2004](@cite). See the [Examples](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples) folder for the file with the code. We consider the polynomial
 ```math
 f(x,y,z) = x^4 + y^4 + z^4 - 4xyz + x + y + z
 ```

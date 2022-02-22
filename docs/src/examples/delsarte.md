@@ -1,6 +1,6 @@
 # Example: the Delsarte bound
 
-In this example we show how the Delsarte linear programming bound [delsarte-spherical-1977](@cite) for the spherical code problem can be modeled and solved using `ClusteredLowRankSolver`. Let ``P_k^n`` be the Gegenbauer polynomial of degree ``k`` with parameter ``n/2-1``, normalized such that ``P_k^n(1) = 1``. The Delsarte bound for dimension ``n``, degree ``2d``, and angle ``\theta`` can be written as
+In this example we show how the Delsarte linear programming bound [delsarte-spherical-1977](@cite) for the spherical code problem can be modeled and solved using `ClusteredLowRankSolver`. See the [Examples](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples) folder for the file with the code. Let ``P_k^n`` be the Gegenbauer polynomial of degree ``k`` with parameter ``n/2-1``, normalized such that ``P_k^n(1) = 1``. The Delsarte bound for dimension ``n``, degree ``2d``, and angle ``\theta`` can be written as
 ```math
 \begin{aligned}
     \min \quad& M && \\
