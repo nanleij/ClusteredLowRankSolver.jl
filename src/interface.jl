@@ -269,17 +269,17 @@ function ClusteredLowRankSDP(maximize,constant,A,B,c,C,b)
 end
 
 """
-    ClusteredLowRankSDP(sos::LowRankPolProblem[, as_free::Vector])
+    ClusteredLowRankSDP(sos::LowRankPolProblem; as_free::Vector, prec, verbose])
 
 Define a ClusteredLowRankSDP based on the LowRankPolProblem sos.
 
 The PSD variables defined by the keys in the vector `as_free` will be modelled as extra free variables,
 with extra constraints to ensure that they are equal to the entries of the PSD variables.
-Keyword arguments:
+Remaining keyword arguments:
   - `prec` (default: precision(BigFloat)) - the precision of the result
   - `verbose` (default: false) -  print progress to the standard output
 """
-function ClusteredLowRankSDP(sos::LowRankPolProblem, as_free = []; prec=precision(BigFloat),verbose = false)
+function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precision(BigFloat),verbose = false)
     # the blocks in as_free will be modelled as extra variables
     if length(as_free) > 0
         if verbose
