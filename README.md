@@ -68,4 +68,4 @@ More examples are available in the [documentation](https://nanleij.github.io/Clu
 ## Citing ClusteredLowRankSolver
 If the use of `ClusteredLowRankSolver.jl` results in a publication, consider citing
 
- - D. de Laat and N. M. Leijenhorst, *Solving Clustered Low-Rank Semidefinite Programs arising from Polynomial Optimization*, arxiv:
+ - D. de Laat and N. Leijenhorst, *Solving clustered low-rank semidefinite programs arising frompolynomial optimization*, [arXiv:2202.12077](https://arxiv.org/abs/2202.12077) [math] (2022)
