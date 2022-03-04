@@ -483,7 +483,6 @@ function solvesdp(
         end
         println("We return the current solution and optimality status.")
         error_code[1] = 1 #general errors
-        rethrow(e)
     end #of try/catch
     time_total = time() - time_start #this may include compile time
 	results = CLRSResults(x, X, y, Y, compute_primal_objective(sdp, x), compute_dual_objective(sdp,y, Y), sdp.matrix_coeff_names, sdp.free_coeff_names)

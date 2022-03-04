@@ -86,7 +86,7 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
         for j=1:i
             #We take a new basis since the domain depends on the radii
             basis = [max_coef[i]^(-1) * q[i] for i = 1:length(q)]
-            samples = sample_points_rescaled_laguerre(2d+1) .+ (r[i]+r[j])^2
+            samples = [x .+ (r[i]+r[j])^2 for x in sample_points_rescaled_laguerre(2d+1)]
             basis,samples = approximatefekete(basis,samples)
 
             PSD_part = Dict()
