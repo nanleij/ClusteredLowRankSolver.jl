@@ -5,8 +5,8 @@
 [![Coverage](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl)
 
 ## Clustered Low-Rank Semidefinite Programs
-A clustered low-rank semidefinite program is a semidefinite program in equality form including free scalar variables, where the constraint matrices corresponding to positive semidefinite variables have a low-rank structure. The program is clustered in the sense two constraints in different clusters do not use the same positive semidefinite matrix variables.
-An example where such a clustered low-rank SDP appears is by sampling (low-rank) sums-of-squares constraints in an semidefinite program. In the interface we focus on this application.
+A clustered low-rank semidefinite program is a semidefinite program in equality form including free scalar variables, where the constraint matrices corresponding to positive semidefinite variables have a low-rank structure. The program is clustered in the sense that two constraints in different clusters do not use the same positive semidefinite matrix variables.
+An example where such a clustered low-rank SDP appears is by sampling (low-rank) sums-of-squares constraints. In the interface we focus on this application.
 
 
 ## Installation
@@ -17,7 +17,7 @@ After installing Julia, run Julia and install the package with e.g.
 Press `backspace` to go back to the REPL from the package environment.
 
 ## Usage
-After installing, use the package with `using ClusteredLowRankSolver`. See the [documentation](https://nanleij.github.io/ClusteredLowRankSolver.jl/stable) for instructions on using the interface. Below we show how to model a small polynomial optimization problem.
+Use the package with `using ClusteredLowRankSolver`. See the [documentation](https://nanleij.github.io/ClusteredLowRankSolver.jl/stable) for instructions on using the interface. Below we show how to model a small polynomial optimization problem.
 
 To use `n` threads, start Julia with the option `-t n`.
 On Windows using multiple threads may lead to crashes or wrong answers when using free variables.
@@ -25,7 +25,7 @@ On Windows using multiple threads may lead to crashes or wrong answers when usin
 ## Examples
 Consider the problem of finding the minimum of a univariate polynomial p(x) over [-1,1], i.e., the maximal λ such that p(x)-λ >=0. Relaxing the constraint gives p(x)-λ = s_1(x) + (1-x^2) * s_2(x) , i.e., s_1(x) + (1-x^2) * s_2(x) + λ = p where s_i are sum-of-squares polynomials.
 
-```
+```julia
 using ClusteredLowRankSolver, AbstractAlgebra
 using BasesAndSamples # To generate the samples
 
@@ -66,6 +66,6 @@ More examples are available in the [documentation](https://nanleij.github.io/Clu
 
 
 ## Citing ClusteredLowRankSolver
-If the use of `ClusteredLowRankSolver.jl` results in a publication, consider citing
+If you use `ClusteredLowRankSolver.jl` in a publication please consider citing
 
- - D. de Laat and N. Leijenhorst, *Solving clustered low-rank semidefinite programs arising frompolynomial optimization*, [arXiv:2202.12077](https://arxiv.org/abs/2202.12077) [math] (2022)
+ - D. de Laat and N. Leijenhorst, *Solving clustered low-rank semidefinite programs arising from polynomial optimization*, Preprint (2022), [arXiv:2202.12077](https://arxiv.org/abs/2202.12077)
