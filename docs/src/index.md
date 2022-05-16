@@ -13,7 +13,7 @@ A clustered low-rank semidefinite program is defined as
 ```
 where ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the low-rank structure
 ```math
-	A_p^j = \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)} \otimes E_{l,l}^{L_j}.
+	A_p^j = \bigoplus_{l=1}^{L_j} \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)}.
 ```
 The matrices ``A_p^j(l;r, s)`` are of low rank and ``A_p^j(l;r, s)^{\sf T} =  A_p^j(l;s, r)``. Here ``E_{r,s}^n`` is the ``n \times n`` matrix with a one at position ``(r,s)`` and zeros otherwise.
 
