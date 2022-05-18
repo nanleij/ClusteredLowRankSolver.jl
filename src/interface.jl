@@ -589,8 +589,8 @@ struct CLRSResults
 end
 function CLRSResults(x,X,y,Y, primal_objective,dual_objective, matrix_coeff_names::Vector, free_coeff_names::Vector)
     #convert to
-    matrixvar = Dict(Block(m) => BigFloat.(mv) for (m,mv) in zip(matrix_coeff_names[j], Y.blocks[j].blocks) for j=1:length(matrix_coeff_names))
-    freevar = Dict(f => BigFloat(fv) for (f,fv) in zip(y, free_coeff_names))
+    matrixvar = Dict(Block(m) => BigFloat.(mv) for j=1:length(matrix_coeff_names) for (m,mv) in zip(matrix_coeff_names[j], Y.blocks[j].blocks) )
+    freevar = Dict(f => BigFloat(fv) for (f,fv) in zip(free_coeff_names,y))
     return CLRSResults(x,X,y,Y, primal_objective,dual_objective, matrixvar, freevar)
 end
 
