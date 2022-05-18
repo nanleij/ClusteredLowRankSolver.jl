@@ -568,16 +568,30 @@ optimal(::Optimal) = true
 
 
 #The name to make clear what results these are. Distinguishing it from e.g. SDPA-GMP if someone uses both?
+#TODO: decide whether to change CLRSResults to ClusteredLowRankSolverResults
+#TODO: should we remove the y and the Y now that we gave the names back
+#TODO: should we convert x, X to BigFloat too? or keep matrixvar etc in Arbs?
 struct CLRSResults
+    #the internally used matrices
     x::ArbRefMatrix
     X::BlockDiagonal{ArbRef,BlockDiagonal{ArbRef,ArbRefMatrix}}
     y::ArbRefMatrix
     Y::BlockDiagonal{ArbRef,BlockDiagonal{ArbRef,ArbRefMatrix}}
+    #the objectives
     primal_objective::Arb
     dual_objective::Arb
-    matrix_coeff_names::Vector{Vector{Any}}
-    free_coeff_names::Vector{Any}
+    #the dual solutions with the user-defined names
+    matrixvar::Dict{Block, Matrix{BigFloat}}
+    freevar::Dict{Any, BigFloat}
+    # matrix_coeff_names::Vector{Vector{Any}}
+    # free_coeff_names::Vector{Any}
     # status::Status #optimal, near optimal, primal feasible, dual feasible, feasible (p&d),not converged
+end
+function CLRSResults(x,X,y,Y, primal_objective,dual_objective, matrix_coeff_names::Vector, free_coeff_names::Vector)
+    #convert to
+    matrixvar = Dict(Block(m) => BigFloat.(mv) for j=1:length(matrix_coeff_names) for (m,mv) in zip(matrix_coeff_names[j], Y.blocks[j].blocks) )
+    freevar = Dict(f => BigFloat(fv) for (f,fv) in zip(free_coeff_names,y))
+    return CLRSResults(x,X,y,Y, primal_objective,dual_objective, matrixvar, freevar)
 end
 
 Base.show(io::IO, x::Optimal) = @printf(io, "pdOpt")

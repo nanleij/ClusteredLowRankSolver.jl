@@ -477,7 +477,7 @@ function solvesdp(
         iter += 1
     end
     catch e
-        println("A $(typeof(e)) occurred")
+        println("A(n) $(typeof(e)) occurred.")
         if hasfield(typeof(e),:msg)
             println(e.msg)
         end
