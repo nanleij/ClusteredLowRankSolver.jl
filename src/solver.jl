@@ -559,7 +559,7 @@ function solvesdp(
             @printf("%11.4e %11.4e %11.4e %11.4e %11.4e %11.4e\n\n", allocs...)
         end
 		println("\nPrimal objective:", results.primal_objective)
-		println("Primal objective:", results.dual_objective)
+		println("Dual objective:", results.dual_objective)
 		println("Duality gap:", compute_duality_gap(results.primal_objective, results.dual_objective))
 
     end
