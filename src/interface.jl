@@ -578,10 +578,10 @@ struct CLRSResults
     y::ArbRefMatrix
     Y::BlockDiagonal{ArbRef,BlockDiagonal{ArbRef,ArbRefMatrix}}
     #the objectives
-    primal_objective::Arb
-    dual_objective::Arb
+    primal_objective::BigFloat
+    dual_objective::BigFloat
     #the dual solutions with the user-defined names
-    matrixvar::Dict{Block, Matrix{BigFloat}}
+    matrixvar::Dict{Any, Matrix{BigFloat}}
     freevar::Dict{Any, BigFloat}
     # matrix_coeff_names::Vector{Vector{Any}}
     # free_coeff_names::Vector{Any}
@@ -589,9 +589,9 @@ struct CLRSResults
 end
 function CLRSResults(x,X,y,Y, primal_objective,dual_objective, matrix_coeff_names::Vector, free_coeff_names::Vector)
     #convert to
-    matrixvar = Dict(Block(m) => BigFloat.(mv) for j=1:length(matrix_coeff_names) for (m,mv) in zip(matrix_coeff_names[j], Y.blocks[j].blocks) )
+    matrixvar = Dict(m => BigFloat.(mv) for j=1:length(matrix_coeff_names) for (m,mv) in zip(matrix_coeff_names[j], Y.blocks[j].blocks) )
     freevar = Dict(f => BigFloat(fv) for (f,fv) in zip(free_coeff_names,y))
-    return CLRSResults(x,X,y,Y, primal_objective,dual_objective, matrixvar, freevar)
+    return CLRSResults(x,X,y,Y, BigFloat(primal_objective),BigFloat(dual_objective), matrixvar, freevar)
 end
 
 Base.show(io::IO, x::Optimal) = @printf(io, "pdOpt")
