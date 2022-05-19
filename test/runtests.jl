@@ -2,7 +2,7 @@ using ClusteredLowRankSolver
 using Test
 
 @testset "ClusteredLowRankSolver.jl" begin
-    #for these tests we need to register BasesAndSamples first. Or we need to make it a submodule maybe
+
     @testset "examples" begin
         # these examples test nearly everything
         include("../examples/PolyOpt.jl")
@@ -21,10 +21,12 @@ using Test
         using .SpherePacking
         _, sol, _, _ = cohnelkies(8, 25)
         @test sol.dual_objective ≈ BigFloat(pi)^4/384 atol=1e-4 #exact in the limit of d-> ∞, but for this d the error still is relatively large
+        _, sol, _, _ = Nsphere_packing(8, 15, [1//2,1//2],2)
+        @test sol.dual_objective ≈ BigFloat(pi)^4/384 atol=1e-4
 
         include("../examples/ThreePointBound.jl")
         using .ThreePointBound
-        _, sol, _, _ = three_point_spherical_cap(3,6, 1//2)
+        _, sol, _, _ = three_point_spherical_cap(3, 6, 1//2, 256, true)
         @test sol.dual_objective ≈ 12.718780 atol=1e-5
     end
 
@@ -55,10 +57,10 @@ using Test
         using AbstractAlgebra
         R, (x,) = PolynomialRing(RealField, ["x"])
         A = LowRankMatPol([x],[[x^2,x^3]]) # the matrix [x^5 x^6; x^6 x^7]
-        B = evaluate(A,2)
+        B = A(2)
         @test [B[i,j] for i=1:2,j=1:2] == [2^5 2^6; 2^6 2^7]
         At = transpose(A)
-        Bt = evaluate(At,2)
+        Bt = At(2)
         @test [Bt[i,j] for i=1:2,j=1:2] == [2^5 2^6; 2^6 2^7]
     end
 end

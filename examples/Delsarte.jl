@@ -18,11 +18,11 @@ function delsarte(n, d,costheta, precision=512; all_free = false, kwargs...)
     #construct the constraint ∑_k a_k P^n_k(u) + SOS + (u+1)(cos(θ)-u)*SOS = - 1
     c = Dict()
     for k=0:2d
-        c[Block(k)] = LowRankMatPol([gbasis[k+1]], [[P(1)]])
+        c[Block(k)] = LowRankMatPol([gbasis[k+1]], [[1]])
     end
-    c[Block(:A)] = LowRankMatPol([P(1)], [sosbasis[1:d+1]])
+    c[Block(:A)] = LowRankMatPol([1], [sosbasis[1:d+1]])
     c[Block(:B)] = LowRankMatPol([(u+1)*(costheta-u)], [sosbasis[1:d]])
-    constraint = Constraint(-P(1), c, Dict(), samples)
+    constraint = Constraint(-1, c, Dict(), samples)
 
     #Construct the objective 1 + ∑_k a_k
     objective = Objective(1, Dict(Block(k) => hcat([FF(1)]) for k=0:2d), Dict())
@@ -79,24 +79,24 @@ function Nspherical_cap_packing(n,d,thetas,N = length(thetas),precision=precisio
             for k=0:2d
                 if i != j
                     # We set both sides of the matrix
-                    c[Block(k,i,j)] = LowRankMatPol([1//2*basis[k+1]], [[P(1)]])
-                    c[Block(k,j,i)] = LowRankMatPol([1//2*basis[k+1]], [[P(1)]])
+                    c[Block(k,i,j)] = LowRankMatPol([1//2*basis[k+1]], [[1]])
+                    c[Block(k,j,i)] = LowRankMatPol([1//2*basis[k+1]], [[1]])
                 else
-                    c[Block(k,i,i)] = LowRankMatPol([basis[k+1]], [[P(1)]])
+                    c[Block(k,i,i)] = LowRankMatPol([basis[k+1]], [[1]])
                 end
             end
-            c[Block((:SOS1,i,j))] = LowRankMatPol([P(1)], [[u^k for k=0:d]])
+            c[Block((:SOS1,i,j))] = LowRankMatPol([1], [[u^k for k=0:d]])
             c[Block((:SOS2,i,j))] = LowRankMatPol([(u+1)*(cos(thetas[i]+thetas[j])-u)], [[u^k for k=0:d-1]])
 
             samples = sample_points_chebyshev(2d,-1,cos(thetas[i]+thetas[j])) # TODO possibly take more samples
-            push!(constraints, Constraint(-P(sqrt(w[i]*w[j])), c, Dict(), samples))
+            push!(constraints, Constraint(-sqrt(w[i]*w[j]), c, Dict(), samples))
         end
 
         # The objective is M, but constrained by ∑_k a_kii ≦  M - w_i, i.e. ∑_k a_kii + pos.slack_i - M = -w_i
-        obj = Dict(Block(k,i,i) => LowRankMatPol([P(1)],[[P(1)]]) for k=0:2d)
+        obj = Dict(Block(k,i,i) => LowRankMatPol([1],[[1]]) for k=0:2d)
         #an easy mistake would be to use the same slack variable for every i by forgetting the i in the tuple (:SOS_obj, i).
-        obj[Block((:SOS_obj,i))] = LowRankMatPol([P(1)],[[P(1)]])
-        objective_constraint = Constraint(-P(w[i]),obj,Dict(:M=>P(-1)),[[0]])
+        obj[Block((:SOS_obj,i))] = LowRankMatPol([1],[[1]])
+        objective_constraint = Constraint(-w[i],obj,Dict(:M=>-1))
         push!(constraints,objective_constraint)
     end
 
@@ -108,7 +108,7 @@ function Nspherical_cap_packing(n,d,thetas,N = length(thetas),precision=precisio
 
     #construct and solve the SDP, with or without using free variables for the A_k
     if all_free
-        sdp = ClusteredLowRankSDP(sos,[k for k=0:2d])
+        sdp = ClusteredLowRankSDP(sos,as_free=[k for k=0:2d])
     else
         sdp = ClusteredLowRankSDP(sos)
     end

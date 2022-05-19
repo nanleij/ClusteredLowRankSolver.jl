@@ -55,7 +55,7 @@ function min_f(d)
         end
     end
 
-    constr = Constraint(f, psd_dict, Dict(:M => R(1)), samples)
+    constr = Constraint(f, psd_dict, Dict(:M => 1), samples)
     pol_problem = LowRankPolProblem(true, obj, [constr])
     sdp = ClusteredLowRankSDP(pol_problem)
 

@@ -33,16 +33,16 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
     for i=1:N
         for j=1:i
             if i != j
-                push!(con1,Constraint(-R(sqrt(spherevolume(n,r[i])*spherevolume(n,r[j]))),
-                    Dict(Block(:PSD1,i,j)=>LowRankMatPol([R(1//2)],[[R(1)]]),
-                        Block(:PSD1,j,i)=>LowRankMatPol([R(1//2)],[[R(1)]])),
-                    Dict(Block(0,i,j)=>R(-1)), #we only use a_ijk for i>=j
-                    [[0]]))
+                push!(con1,Constraint(-sqrt(spherevolume(n,r[i])*spherevolume(n,r[j])),
+                    Dict(Block(:PSD1,i,j)=>LowRankMatPol([1//2],[[1]]),
+                        Block(:PSD1,j,i)=>LowRankMatPol([1//2],[[1]])),
+                    Dict(Block(0,i,j)=>-1), #we only use a_ijk for i>=j
+                    ))
             else
-                push!(con1,Constraint(-R(sqrt(spherevolume(n,r[i])*spherevolume(n,r[j]))),
-                    Dict(Block(:PSD1,i,j)=>LowRankMatPol([R(1)],[[R(1)]])),
-                    Dict(Block(0,i,j)=>R(-1)), #we only use a_ijk for i>=j
-                    [[0]]))
+                push!(con1,Constraint(-sqrt(spherevolume(n,r[i])*spherevolume(n,r[j])),
+                    Dict(Block(:PSD1,i,j)=>LowRankMatPol([1],[[1]])),
+                    Dict(Block(0,i,j)=>-1), #we only use a_ijk for i>=j
+                    ))
             end
         end
     end
@@ -65,18 +65,18 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
                 for k=0:2d+1
                     free_part[Block(k,i,j)] = -2*x^k
                 end
-                PSD_part[Block(:SOS21,i,j)] = LowRankMatPol([R(1)],[basis[1:d+1]])
+                PSD_part[Block(:SOS21,i,j)] = LowRankMatPol([1],[basis[1:d+1]])
                 PSD_part[Block(:SOS22,i,j)] = LowRankMatPol([x],[basis[1:d+1]])
-                PSD_part[Block(:SOS21,j,i)] = LowRankMatPol([R(1)],[basis[1:d+1]])
+                PSD_part[Block(:SOS21,j,i)] = LowRankMatPol([1],[basis[1:d+1]])
                 PSD_part[Block(:SOS22,j,i)] = LowRankMatPol([x],[basis[1:d+1]])
             else
                 for k=0:2d+1
                     free_part[Block(k,i,j)] = -x^k
                 end
-                PSD_part[Block(:SOS21,i,j)] = LowRankMatPol([R(1)],[basis[1:d+1]])
+                PSD_part[Block(:SOS21,i,j)] = LowRankMatPol([1],[basis[1:d+1]])
                 PSD_part[Block(:SOS22,i,j)] = LowRankMatPol([x],[basis[1:d+1]])
             end
-            push!(con2,Constraint(R(0),PSD_part,free_part,samples,[scaling_fun(s...) for s in samples]))
+            push!(con2,Constraint(0,PSD_part,free_part,samples,[scaling_fun(s...) for s in samples]))
         end
     end
 
@@ -95,9 +95,9 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
                 free_part[Block(k,i,j)] = factorial(big(k))/BigFloat(pi)^k * laguerre(k, BigFloat(n) / 2 - 1, BigFloat(pi)*x)
             end
             #since we use 2d+1, we only need the constant of this SOS matrix; in practice it is always the 0 matrix
-            PSD_part[Block((:SOS31,i,j))] = LowRankMatPol([R(1)],[basis[1:1]])
+            PSD_part[Block((:SOS31,i,j))] = LowRankMatPol([1],[basis[1:1]])
             PSD_part[Block((:SOS32,i,j))] = LowRankMatPol([x-(r[i]+r[j])^2],[basis[1:d+1]])
-            push!(con3,Constraint(R(0),PSD_part,free_part,samples,[scaling_fun(s...) for s in samples]))
+            push!(con3,Constraint(0,PSD_part,free_part,samples,[scaling_fun(s...) for s in samples]))
         end
     end
 
@@ -107,11 +107,11 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
         PSD_part = Dict()
         free_part = Dict()
         for k=0:2d+1
-            free_part[Block(k,i,i)] = R(factorial(big(k))/BigFloat(pi)^k * laguerre(k, BigFloat(n) / 2 - 1,0))
+            free_part[Block(k,i,i)] = factorial(big(k))/BigFloat(pi)^k * laguerre(k, BigFloat(n) / 2 - 1,0)
         end
-        free_part[:M] = -R(1)
-        PSD_part[Block((:slack4,i))] = LowRankMatPol([R(1)],[[R(1)]])
-        push!(con4,Constraint(R(0),PSD_part,free_part,[[0]]))
+        free_part[:M] = -1
+        PSD_part[Block((:slack4,i))] = LowRankMatPol([1],[[1]])
+        push!(con4,Constraint(0,PSD_part,free_part))#,[[0]]))
     end
 
     #objective: M
@@ -159,10 +159,10 @@ function cohnelkies(n,d,r=1;scale_var_fun = k->1, prec=512, model_prec=prec,ret_
     for k=1:2d+1
         free_part[Block(k)] = -scale_var_fun(k)*x^k
     end
-    PSD_part[Block(:SOS21)] = LowRankMatPol([R(1)],[basis[1:d+1]])
+    PSD_part[Block(:SOS21)] = LowRankMatPol([1],[basis[1:d+1]])
     PSD_part[Block(:SOS22)] = LowRankMatPol([x],[basis[1:d+1]])
 
-    con1 = Constraint(R(1),PSD_part,free_part,samples, [scaling_fun(s...) for s in samples]) #y_0 = 1 = constant
+    con1 = Constraint(1,PSD_part,free_part,samples, [scaling_fun(s...) for s in samples]) #y_0 = 1 = constant
 
     #constraint 2: SOS + (x - (r_i + r_j)^2)*SOS + sum_k a_ijk k! pi^-k L_k^{n/2-1}(pi x) = 0
     basis = [max_coef[i]^(-1) * q[i] for i = 1:length(q)] #2d+1 sample points, because we have polynomials of that degree
@@ -179,7 +179,7 @@ function cohnelkies(n,d,r=1;scale_var_fun = k->1, prec=512, model_prec=prec,ret_
     # one would think that taking 1 less sample point should make it possible to not use the 1x1 PSD block (2d basis polynomials and 2d points). However, then it gives the wrong answer (~0.133 instead of 0.779)
     #I am not sure why that is the case. the extra constant is nearly 0 as expected
     #for three blocks:
-    PSD_part[Block((:SOS31))] = LowRankMatPol([R(1)],[basis[1:1]])
+    PSD_part[Block((:SOS31))] = LowRankMatPol([1],[basis[1:1]])
     #for 4 blocks:
     # PSD_part[Block((:SOS31))] = LowRankMatPol([R(1)],[basis[1:d+1]])
     PSD_part[Block((:SOS32))] = LowRankMatPol([x-r^2],[basis[1:d+1]])

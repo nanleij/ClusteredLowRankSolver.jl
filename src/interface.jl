@@ -54,12 +54,12 @@ function SampledMPolyElem(samples, values)
     SampledMPolyElem(Dict(samples[s] => values[s] for s in eachindex(samples)))
 end
 
-function evaluate(p::SampledMPolyElem, v...)
-    p.evaluations[collect(v)]
+function evaluate(p::SampledMPolyElem, v)
+    p.evaluations[v]
 end
 
 function (p::SampledMPolyElem)(v...)
-    evaluate(p, v...)
+    evaluate(p, collect(v))
 end
 
 # addition
@@ -102,12 +102,16 @@ function Base.:*(p::MPolyElem, q::SampledMPolyElem)
     r
 end
 
-function Base.:*(p, q::SampledMPolyElem)
+function Base.:*(p::Union{AbstractFloat, Integer,Rational}, q::SampledMPolyElem)
     r = copy(q)
     for s in keys(r.evaluations)
-        r.evaluations[s] *= p(s...)
+        r.evaluations[s] *= p
     end
     r
+end
+
+function Base.:*(q::SampledMPolyElem,p::Union{AbstractFloat, Integer,Rational})
+    p * q
 end
 
 function Base.:*(q::SampledMPolyElem, p::MPolyElem)
@@ -145,7 +149,7 @@ end
 ### Low rank matrix polynomials ###
 ###################################
 
-polys = Union{MPolyElem, SampledMPolyElem}
+polys = Union{MPolyElem, SampledMPolyElem, Number}
 
 """
     LowRankMat(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
@@ -170,12 +174,21 @@ function Base.size(m::LowRankMatPol, i)
     length(m.leftevs[1])
 end
 
-function AbstractAlgebra.evaluate(p::LowRankMatPol, sample...; scaling = 1, prec=precision(BigFloat))
-    LowRankMat([Arb(scaling*v(sample...), prec=prec) for v in p.eigenvalues],
-               [ArbRefMatrix([v(sample...) for v in w], prec=prec) for w in p.leftevs],
-               [ArbRefMatrix([v(sample...) for v in w], prec=prec) for w in p.rightevs])
+function evaluate(p::LowRankMatPol, sample; scaling = 1, prec=precision(BigFloat))
+    LowRankMat([Arb(scaling*evaluate(v,sample), prec=prec) for v in p.eigenvalues],
+               [ArbRefMatrix([evaluate(v,sample) for v in w], prec=prec) for w in p.leftevs],
+               [ArbRefMatrix([evaluate(v,sample) for v in w], prec=prec) for w in p.rightevs])
 end
 
+function (p::LowRankMatPol)(sample...)
+    evaluate(p, collect(sample))
+end
+
+
+#Extend evaluation to numbers, whatever the sample may be
+function evaluate(x::T, sample) where T <: Real
+    x
+end
 
 #############################
 ### Low rank SOS problems ###
@@ -215,13 +228,15 @@ Arguments:
   - `scalings::Vector`
 """
 struct Constraint
-    constant::MPolyElem
+    constant::polys
     matrixcoeff::Dict{Block,LowRankMatPol}
-    freecoeff::Dict{Any,MPolyElem}
+    freecoeff::Dict{Any,polys}
     samples::Vector{Vector}
     scalings::Vector
 end
 Constraint(constant,matrixcoeff,freecoeff,samples) = Constraint(constant,matrixcoeff,freecoeff,samples,[1 for s in samples])
+Constraint(constant,matrixcoeff,freecoeff) = Constraint(constant,matrixcoeff,freecoeff,[[0]],[1]) #assume numbers instead of polynomials
+
 
 
 """
@@ -454,7 +469,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
             constraint = sos.constraints[constraintindex]
             for (idx,sample) in enumerate(constraint.samples) #This can take quite long for a large amount of samples & a large basis
                 for block in keys(constraint.matrixcoeff)
-                    v[findfirst(isequal(block.l), subblock_keys)][block.r,block.s][i] = evaluate(constraint.matrixcoeff[block], sample...,scaling = constraint.scalings[idx],prec=prec)
+                    v[findfirst(isequal(block.l), subblock_keys)][block.r,block.s][i] = evaluate(constraint.matrixcoeff[block], sample,scaling = constraint.scalings[idx],prec=prec)
                     # We can set the s,r block here to the transpose of the r,s block. Or to 1/2 * the transpose if we would want that.
                 end
                 i += 1
@@ -494,7 +509,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                 s = sos.constraints[constraintindex].samples[s_idx]
                 scaling = sos.constraints[constraintindex].scalings[s_idx]
                 for (k,v) in sos.constraints[constraintindex].freecoeff
-                    constraint_B[s_idx,findfirst(isequal(k),freecoefflabels)] = Arb(scaling*v(s...))
+                    constraint_B[s_idx,findfirst(isequal(k),freecoefflabels)] = Arb(scaling*evaluate(v,s))
                 end
             end
             push!(Bj,constraint_B)
@@ -504,7 +519,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
     if verbose
         println("Sampling the constants...")
     end
-    c = [ArbRefMatrix([sos.constraints[constraintindex].scalings[s_idx]*sos.constraints[constraintindex].constant(sample...) for constraintindex in constraintindices for (s_idx,sample) in enumerate(sos.constraints[constraintindex].samples)],prec=prec) for constraintindices in cluster_constraint_index]
+    c = [ArbRefMatrix([evaluate(sos.constraints[constraintindex].scalings[s_idx]*sos.constraints[constraintindex].constant,sample) for constraintindex in constraintindices for (s_idx,sample) in enumerate(sos.constraints[constraintindex].samples)],prec=prec) for constraintindices in cluster_constraint_index]
 
     b = ArbRefMatrix(length(freecoefflabels),1,prec=prec)
     for (k,v) in sos.objective.freecoeff

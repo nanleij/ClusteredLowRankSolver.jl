@@ -40,7 +40,7 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
     end
     #The vectors which construct the Pi_pi matrices. We have to tensor them with a symmetric basis for the E_pi matrices
     symmetry_weights = [[[R(1)]],
-                        [[R((u-v)*(v-t)*(t-u))]],
+                        [[(u-v)*(v-t)*(t-u)]],
                         [[1/sqrt(FF(2))*(2u-v-t),1/sqrt(FF(2))*(2v*t-u*t-u*v)],
                             [sqrt(FF(3)/FF(2))*(v-t),sqrt(FF(3)/FF(2))*(u*t-u*v)]]]
     #The polynomial weights which describe the domain
@@ -111,7 +111,7 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
             F[Block((:trivariatesos, wi,swi))] = LowRankMatPol([weights[wi] for r=1:rank], vecs)
         end
     end
-    trivariatecon = Constraint(R(0), F, Dict(), samples)
+    trivariatecon = Constraint(0, F, Dict(), samples)
 
     if verbose
         println("Creating the univariate constraint")
@@ -120,22 +120,22 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
     f = Dict()
     for k=0:d # F(u,u,1)
         # from the (normally) three vu^T items, we only need 2 if we sum the ones with common u^T
-        f[Block((:F,k))] = LowRankMatPol([W(1), W(1)],
+        f[Block((:F,k))] = LowRankMatPol([1,1],
                             [m(w,d-k), m(W(1),d-k)],
                             [Q(n-1,k,w,w,1) .* m(w,d-k)+Q(n-1,k,w,1,w) .* m(W(1),d-k),Q(n-1,k,1,w,w) .* m(w,d-k)])
     end
     basis = basis_gegenbauer(2d, n, w)
     for k=0:2d # a_k
-        f[Block((:a,k))] = LowRankMatPol([basis[k+1]], [[W(1)]])
+        f[Block((:a,k))] = LowRankMatPol([basis[k+1]], [[1]])
     end
     uni_basis = basis_chebyshev(2d, x)
     samples1d = sample_points_chebyshev(2d, -1, costheta) #we can take more samples, now we just get a better basis based on these samples. But since chebyshev points are relatively good, this is not a problem
     uni_basis,samples1d = approximatefekete(uni_basis, samples1d)
 
-    f[Block((:uni_SOS,1))] = LowRankMatPol([W(1)], [uni_basis[1:d+1]])
+    f[Block((:uni_SOS,1))] = LowRankMatPol([1], [uni_basis[1:d+1]])
     f[Block((:uni_SOS,2))] = LowRankMatPol([p(w,costheta)], [uni_basis[1:d]])
 
-    univariatecon = Constraint(W(-1), f, Dict(), samples1d)
+    univariatecon = Constraint(-1, f, Dict(), samples1d)
 
     obj = Dict()
     obj[Block((:F, 0))] = ones(d+1, d+1)
@@ -149,7 +149,7 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
         println("Converting to a clustered low-rank SDP...")
     end
     if all_free
-        sdp = ClusteredLowRankSDP(sos,[(:F,k) for k=0:d])
+        sdp = ClusteredLowRankSDP(sos,as_free=[(:F,k) for k=0:d])
     else
         sdp = ClusteredLowRankSDP(sos)
     end
