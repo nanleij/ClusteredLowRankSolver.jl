@@ -149,7 +149,7 @@ end
 ### Low rank matrix polynomials ###
 ###################################
 
-polys = Union{MPolyElem, SampledMPolyElem, Number}
+polys = Union{MPolyElem, SampledMPolyElem, Real}
 
 """
     LowRankMat(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
