@@ -75,7 +75,6 @@ end
 function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
     #The cholesky of Arblib, but with zeroed error bounds during the calculations
     size(A,1) == size(A,2) || error("The matrix must be square")
-
     n = size(A,1)
     Arblib.get_mid!(A,A)
     for i=1:n
@@ -91,6 +90,7 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
         end
         # Arblib.get_mid!(A[i,i], A[i,i])
         if Arblib.is_positive(A[i,i]) == 0
+            @show A[i,i], i
             return 0
         end
         approx_sqrt!(A[i,i], A[i,i], prec)

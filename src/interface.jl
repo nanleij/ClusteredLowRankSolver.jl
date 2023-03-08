@@ -28,6 +28,11 @@ function convert_to_prec(A::LowRankMat,prec=precision(BigFloat))
     end
     return LowRankMat(evs,leftvecs,rightvecs)
 end
+function convert_to_prec(A::ArbRefMatrix,prec=precision(BigFloat))
+    res = ArbRefMatrix(A,prec=prec)
+    Arblib.get_mid!(res,res)
+    return res
+end
 
 ######################################
 ### Completely sampled polynomials ###
@@ -184,6 +189,18 @@ function (p::LowRankMatPol)(sample...)
     evaluate(p, collect(sample))
 end
 
+function evaluate(p::Matrix, sample; scaling=1, prec=precision(BigFloat))
+    Arb(scaling,prec=prec)*p(sample; prec=prec)
+end
+#evaluation for normal matrices
+function (p::Matrix)(sample;prec=precision(BigFloat))
+    res = ArbRefMatrix(size(p)...,prec=prec)
+    for i in eachindex(p)
+        res[i] = evaluate(p[i],sample)
+    end
+    return res
+end
+
 
 #Extend evaluation to numbers, whatever the sample may be
 function evaluate(x::T, sample) where T <: Real
@@ -229,7 +246,7 @@ Arguments:
 """
 struct Constraint
     constant::polys
-    matrixcoeff::Dict{Block,LowRankMatPol}
+    matrixcoeff::Dict{Block,Union{LowRankMatPol, Matrix}}
     freecoeff::Dict{Any,polys}
     samples::Vector{Vector}
     scalings::Vector
@@ -268,7 +285,7 @@ end
 struct ClusteredLowRankSDP
     maximize::Bool
     constant::Arb #constant is part of the objective, so maybe we should have constant, C, b, A, B, c or something like that.
-    A::Vector{Vector{Matrix{Dict{Int,LowRankMat}}}}         # A[j][l][r,s][p]
+    A::Vector{Vector{Matrix{Dict{Int,Union{LowRankMat, ArbRefMatrix}}}}}         # A[j][l][r,s][p]
     B::Vector{ArbRefMatrix}                                 # B[j]
     c::Vector{ArbRefMatrix}                                 # c[j]
     C::BlockDiagonal{ArbRef,BlockDiagonal{ArbRef,ArbRefMatrix}} # C[j][l]
@@ -461,7 +478,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                 nsubblocks[block.l] = max(block.r, block.s, get(nsubblocks, block.l, 0))
             end
         end
-        v = [[Dict{Int,LowRankMat}() for _=1:m, _=1:m] for (k, m) in nsubblocks]
+        v = [[Dict{Int,Union{LowRankMat, ArbRefMatrix}}() for _=1:m, _=1:m] for (k, m) in nsubblocks]
 		subblock_keys = collect(keys(nsubblocks))
 
         i = 1

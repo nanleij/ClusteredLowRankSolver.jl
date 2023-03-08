@@ -17,6 +17,10 @@ using Test
         _, sol, _, _ = delsarte(8, 10, 1//2)
         @test sol.dual_objective ≈ 240 atol = 1e-10
 
+        _,sol, _,_ = delsarte_highrank(3,10,1//2)
+        @test sol.dual_objective ≈ 13.158314 atol=1e-5
+
+
         include("../examples/SpherePacking.jl")
         using .SpherePacking
         _, sol, _, _ = cohnelkies(8, 25)
