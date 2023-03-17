@@ -212,7 +212,6 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
         idx_rows = [idx_rows_part[div(i,b)+1] for i=0:n-1]
         idx_cols = [idx_cols_part[i%b+1] for i=0:n-1]
 
-
         n_inner = 1
         idx_inner = [1:size(A,2) for i=1:n]
         res_idx = [1 for i=1:n]

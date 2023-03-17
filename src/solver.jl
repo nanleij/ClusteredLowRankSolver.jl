@@ -187,7 +187,6 @@ function solvesdp(
     end
 
     #separate the high-rank blocks from the low-rank ones.
-
     # Precompute the matrices for the bilinear pairings and the matrices used for ∑_i x_i A_i and <A^j_*, Y>
     leftvecs_pairings, rightvecs_pairings, pointers_left, pointers_right,high_ranks = precompute_matrices_bilinear_pairings(sdp,subblocksizes)
     vecs_left = [[[ArbRefMatrix(0,0) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
