@@ -586,6 +586,20 @@ optimal(::Optimal) = true
 #TODO: decide whether to change CLRSResults to ClusteredLowRankSolverResults
 #TODO: should we remove the y and the Y now that we gave the names back
 #TODO: should we convert x, X to BigFloat too? or keep matrixvar etc in Arbs?
+"""
+CLRSResults contains the output of the solver. 
+
+Fields: 
+ - x, X : the primal variables used in the solver (in Arbs)
+ - y, Y : the dual variables used in the solver (in Arbs)
+ - primal_objective : the primal objective of the solution (BigFloat)
+ - dual_objective : the dual objective of the solution (BigFloat)
+ - matrixvar : a dictionary mapping the user defined names of the matrix variables to the corresponding solution matrices (Matrix{BigFloat}) 
+ - freevar : a dictionary mapping the user defined names of the free variables to the corresponding solution (BigFloat) 
+
+ Note that the block structure of the matrix variables is not preserved. 
+ For example, the key of the matrix corresponding to the input Block(:F,r,s) is given by :F.
+"""
 struct CLRSResults
     #the internally used matrices
     x::ArbRefMatrix
