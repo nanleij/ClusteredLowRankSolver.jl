@@ -6,7 +6,7 @@
 A clustered low-rank semidefinite program is defined as
 ```math
 \begin{aligned}
-	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
+	\min \quad &a +  \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
 	\text{s.t.} \quad & \langle Y^j, A^j_* \rangle + B^T y = c \\
 	& Y^j \succeq 0,
 \end{aligned}
@@ -15,13 +15,13 @@ where ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y
 ```math
 	A_p^j = \bigoplus_{l=1}^{L_j} \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)}.
 ```
-The matrices ``A_p^j(l;r, s)`` are of low rank and ``A_p^j(l;r, s)^{\sf T} =  A_p^j(l;s, r)``. Here ``E_{r,s}^n`` is the ``n \times n`` matrix with a one at position ``(r,s)`` and zeros otherwise.
+The matrices ``A_p^j(l;r, s)`` are of low rank and ``A_p^j(l;r, s)^{\sf T} =  A_p^j(l;s, r)``. Here ``E_{r,s}^n`` is the ``n \times n`` matrix with a one at position ``(r,s)`` and zeros otherwise. 
 
 One example where this structure shows up is when using polynomial constraints which are converted to semidefinite programming constraints by sampling.
 Such a semidefinite program with low-rank polynomial constraints is defined as
 ```math
 \begin{aligned}
-	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
+	\min \quad & a + \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
 	\text{s.t.} \quad & \langle Y^j, A^j_*(x) \rangle + B^T(x) y = c(x) \\
 	& Y^j \succeq 0,
 \end{aligned}

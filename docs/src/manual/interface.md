@@ -46,7 +46,7 @@ function min_f(d)
 
     # Define the constraint SOS + M = f
     # free variables
-    free_dict = Dict(:M => R(1))
+    free_dict = Dict(:M => 1)
 
     # PSD variables (the sum of squares polynomial) & samples
     psd_dict = Dict()
@@ -54,7 +54,7 @@ function min_f(d)
     samples = sample_points_simplex(3,2d)
     basis, samples = approximatefekete(w, samples)
 
-    psd_dict[Block(:Y)] = LowRankMatPol([R(1)], [basis[1:binomial(3+d,d)]])
+    psd_dict[Block(:Y)] = LowRankMatPol([1], [basis[1:binomial(3+d,d)]])
 
     # the constraint
     con  = Constraint(f, psd_dict, free_dict, samples)

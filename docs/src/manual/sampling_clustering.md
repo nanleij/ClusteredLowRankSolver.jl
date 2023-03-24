@@ -9,5 +9,4 @@ In the [`ClusteredLowRankSDP`](@ref), the constraints are clustered. That is, tw
  	sdp = ClusteredLowRankSDP(pol_prob, as_free = [:A, :B,  ...])
 ```
 where `:A, :B, ...` are the keys in the `Block` structure corresponding to the positive semidefinite matrix variables which should be modelled using extra free variables.
-
-This can also be used for high-rank constraint matrices.
+See [Clustering](@ref) for an example. This option can also be used to avoid high-rank constraint matrices. 
