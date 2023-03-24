@@ -11,7 +11,7 @@ A clustered low-rank semidefinite program is defined as
 	& Y^j \succeq 0,
 \end{aligned}
 ```
-where ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the low-rank structure
+where the optimization is over the positive semidefinite matrices ``Y^j`` and the vector of free variables ``y``. Here ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the low-rank structure
 ```math
 	A_p^j = \bigoplus_{l=1}^{L_j} \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)}.
 ```

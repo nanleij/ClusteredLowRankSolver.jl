@@ -25,10 +25,10 @@ Assuming that the low-rank matrix ``A`` is defined before, as well as the polyno
         push!(constraints, Constraint(0,psd_dict,Dict(), samples))
     end
 ```
-Since the positive semidefinite matrix variable ``Y`` occurs in every constraint, the corresponding cluster contains ``k \cdot length(samples)`` constraints after sampling. In order to split this into ``k`` clusters of ``length(samples)`` constraints, we use the option ``as_free`` to model ``Y`` as free variables:
+Since the positive semidefinite matrix variable ``Y`` occurs in every constraint, the corresponding cluster contains ``k \cdot length(samples)`` constraints after sampling. To split this into ``k`` clusters of ``length(samples)`` constraints, we use the option ``as_free`` to model ``Y`` as free variables:
 ```julia
     polprob = LowRankPolProblem(false,obj, constraints)
     sdp = ClusteredLowRankSDP(polprob; as_free = [:Y])
 ```
-This adds auxilliary free variables ``X[i,j]``, adds the constraints ``X[i,j] = Y[i,j]``, and replaces the ``Y[i,j]`` in the constraints by ``X[i,j]``. Then the only positive semidefinite variables in the polynomial constraints are the sums-of-squares matrices, because of which each sums-of-squares constraint is assigned to its own cluster.
+This adds auxilliary free variables ``X[i,j]``, adds the constraints ``X[i,j] = Y[i,j]``, and replaces the ``Y[i,j]`` in the constraints by ``X[i,j]``. Then the only positive semidefinite variables in the polynomial constraints are the sums-of-squares matrices, which causes each sums-of-squares constraint to be assigned to its own cluster.
 
