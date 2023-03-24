@@ -25,7 +25,7 @@ Furthermore, to model the linear inequality constraint, we introduce a slack var
 Together this gives the semidefinite program
 ```math
 \begin{aligned}
-    \min & M && \\
+    \min \quad & M && \\
     \text{s.t.} &\sum_{k=1}^{2d} a_k P_k^n(x_l) + \langle b_d(x_l)b_d(x_l)^T, Y_1 \rangle &&\\
     &\quad + \langle g(x_l)b_{d-1}(x_l)b_{d-1}(x_l)^T, Y_2 \rangle &= -1,\quad& l=1, \ldots, 2d+1 \\
      & \sum_{k=1}^{2d} a_k + s - M & =1 \quad &\\
