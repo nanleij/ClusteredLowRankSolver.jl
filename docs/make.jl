@@ -13,12 +13,14 @@ makedocs(bib,
         "Home" => "index.md",
         "Manual" => [
             "Interface" => "manual/interface.md",
+            "manual/sampling_clustering.md",
             "manual/solver.md",
         ],
         "Examples" => [
             "Delsarte LP bound" =>"examples/delsarte.md",
             "Sphere packing" => "examples/sphere_packing.md",
             "Symmetric polynomial optimization" =>"examples/poly_opt.md",
+            "Clustering" => "examples/clustering.md"
         ],
         "references.md",
     ]

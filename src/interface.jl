@@ -152,7 +152,7 @@ end
 polys = Union{MPolyElem, SampledMPolyElem, Real}
 
 """
-    LowRankMat(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
+    LowRankMatPol(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
 
 The matrix ``∑_i λ_i v_i w_i^T``.
 
