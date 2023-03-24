@@ -6,12 +6,12 @@
 A clustered low-rank semidefinite program is defined as
 ```math
 \begin{aligned}
-	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
+	\min \quad & c + \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
 	\text{s.t.} \quad & \langle Y^j, A^j_* \rangle + B^T y = c \\
 	& Y^j \succeq 0,
 \end{aligned}
 ```
-where ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the low-rank structure
+where the optimization is over the positive semidefinite matrices ``Y^j`` and the vector of free variables ``y``. Here ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the low-rank structure
 ```math
 	A_p^j = \bigoplus_{l=1}^{L_j} \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)}.
 ```
@@ -21,7 +21,7 @@ One example where this structure shows up is when using polynomial constraints w
 Such a semidefinite program with low-rank polynomial constraints is defined as
 ```math
 \begin{aligned}
-	\min \quad & \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
+	\min \quad & c+ \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
 	\text{s.t.} \quad & \langle Y^j, A^j_*(x) \rangle + B^T(x) y = c(x) \\
 	& Y^j \succeq 0,
 \end{aligned}
