@@ -4,7 +4,7 @@ In this example we show how the Delsarte linear programming bound [delsarte-sphe
 ```math
 \begin{aligned}
     \min \quad& M && \\
-    \text{s.t.} \quad&\sum_{k=1}^{2d} a_k P_k^n(x) \leq 0 && \\
+    \text{s.t.} \quad&\sum_{k=1}^{2d} a_k P_k^n(x) \leq 0 \quad \text{for} \quad -1 \leq x \leq cos(\theta) && \\
      & \sum_{k=1}^{2d} a_k  -  M \leq 1 &&\\
      &a_k \geq 0,&&\\
 \end{aligned}
