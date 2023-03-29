@@ -167,12 +167,20 @@ struct LowRankMatPol
     eigenvalues::Vector{polys}
     leftevs::Vector{Vector{polys}}
     rightevs::Vector{Vector{polys}}
+    function LowRankMatPol(eigenvalues, leftevs, rightevs)
+        if !(length(eigenvalues) == length(leftevs) == length(rightevs))
+            error("LowRankMatPol should have the same number of values as vectors")
+        end
+        new(eigenvalues,leftevs,rightevs)
+    end
 end
 
 function LowRankMatPol(eigenvalues, eigenvectors)
     LowRankMatPol(eigenvalues, eigenvectors, eigenvectors)
 end
+
 LinearAlgebra.transpose(A::Union{LowRankMatPol,LowRankMat}) = typeof(A)(A.eigenvalues,A.rightevs,A.leftevs)
+
 Base.getindex(A::LowRankMatPol,i,j) = sum(A.eigenvalues[r] * A.leftevs[r][j] * A.rightevs[r][i] for r=1:length(A.eigenvalues))
 
 function Base.size(m::LowRankMatPol, i)
@@ -357,20 +365,22 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
 
 
             # add equality constraints for the new free variables and the new blocks
-            R, (x,) = PolynomialRing(RealField,["x"])
+            # R, (x,) = PolynomialRing(RealField,["x"])
             for i=1:n*m
                 for j=1:i
                     if i==j
-                        push!(sos.constraints,Constraint(R(0),
-                            Dict(Block(l,i,j)=>LowRankMatPol([R(1)],[[R(1)]])), # matrix variable
-                            Dict((l,i,j)=>R(-1)), # free variable
-                            [[0]],
+                        push!(sos.constraints,Constraint(0,
+                            Dict(Block(l,i,j)=> [1;;]), # matrix variable
+                            Dict((l,i,j)=>-1), # free variable
                             ))
                     else # i != j, so both sides get 1/2
-                        push!(sos.constraints,Constraint(R(0),
-                            Dict(Block(l,i,j) => LowRankMatPol([R(1)],[[R(1)]]), Block(l,j,i) => LowRankMatPol([R(1)],[[R(1)]])),
-                            Dict((l,i,j)=>R(-2)),
-                            [[0]],
+                        # push!(sos.constraints,Constraint(0,
+                        #     Dict(Block(l,i,j) => LowRankMatPol([1],[[1]]), Block(l,j,i) => LowRankMatPol([1],[[1]])),
+                        #     Dict((l,i,j)=>-2),
+                        # ))
+                        push!(sos.constraints,Constraint(0,
+                            Dict(Block(l,i,j) => [1;;], Block(l,j,i) => [1;;]),
+                            Dict((l,i,j)=>-2),
                         ))
                     end
                 end
@@ -471,11 +481,13 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
         constraintindices = cluster_constraint_index[clusterindex]
         nsubblocks = Dict{Any,Int}()
         subblocksizes = Dict{Any,Int}()
+        highranks = Dict{Any, Bool}()
         for constraintindex in constraintindices
             constraint = sos.constraints[constraintindex]
             for block in keys(constraint.matrixcoeff)
                 subblocksizes[block.l] = max(size(constraint.matrixcoeff[block], 1),get(subblocksizes,block.l,0))
                 nsubblocks[block.l] = max(block.r, block.s, get(nsubblocks, block.l, 0))
+                highranks[block.l] = get(highranks, block.l, false) || typeof(constraint.matrixcoeff[block]) != LowRankMatPol
             end
         end
         v = [[Dict{Int,Union{LowRankMat, ArbRefMatrix}}() for _=1:m, _=1:m] for (k, m) in nsubblocks]
@@ -489,7 +501,21 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                     v[findfirst(isequal(block.l), subblock_keys)][block.r,block.s][i] = evaluate(constraint.matrixcoeff[block], sample,scaling = constraint.scalings[idx],prec=prec)
                     # We can set the s,r block here to the transpose of the r,s block. Or to 1/2 * the transpose if we would want that.
                 end
+                for l in keys(highranks)
+                    vidx = findfirst(isequal(l), subblock_keys)
+                    if highranks[l] 
+                        all_blocks = ArbRefMatrix[get(v[vidx][r,s], i, ArbRefMatrix(zeros(subblocksizes[l],subblocksizes[l]),prec=prec)) for r=1:nsubblocks[l] for s=1:nsubblocks[l]]
+                        v[vidx][1,1][i] = hvcat(nsubblocks[l], all_blocks...)
+                    end
+                end
                 i += 1
+            end
+        end
+        #contract high-rank blocks (only (r,s)=(1,1) is used)
+        for l in keys(highranks)
+            if highranks[l]
+                vidx = findfirst(isequal(l), subblock_keys)
+                v[vidx] = [v[vidx][1,1] for _=1:1, _=1:1]
             end
         end
 

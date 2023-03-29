@@ -796,10 +796,9 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
 
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
-            high_rank = any(typeof(sdp.A[j][l][i][p]) != LowRankMat for i in eachindex(sdp.A[j][l]) for p in keys(sdp.A[j][l][i]))
-            high_ranks[j][l] = high_rank
+            high_ranks[j][l] = any(typeof(sdp.A[j][l][i][p]) != LowRankMat for i in eachindex(sdp.A[j][l]) for p in keys(sdp.A[j][l][i]))
             for r=1:size(sdp.A[j][l],1)
-                if high_rank #for high rank matrices we don't have left/right vecs
+                if high_ranks[j][l] #for high rank matrices we don't have left/right vecs
                     push!(rightvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
                     push!(leftvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
                     pointers_right[j][l][r] = Dict{Tuple{Int,Int,Int},Int}()
@@ -877,43 +876,22 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
             if high_ranks[j][l]
                 #for high_rank matrices we don't compute A_Y. We compute the contribution to S_{pq} by
                 #   dot(A[j][l][p], X^-1 * A[j][l][q] * Y)
-                if size(sdp.A[j][l],1) == 1 
-                    X_inv_block = similar(X_inv.blocks[j].blocks[l])
-                    Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
-                    Threads.@threads for p in collect(keys(sdp.A[j][l][1,1])) #Not sure if we should do this threaded or the matrix multiplications
-                        scratch = similar(X_inv_block)
-                        Arblib.mul!(scratch, X_inv_block, sdp.A[j][l][1,1][p])
-                        Arblib.mul!(scratch, scratch, Y.blocks[j].blocks[l])
-                        for q in keys(sdp.A[j][l][1,1])
-                            # We can do only the upper triangular part here, so q >= p
-                            if q<p
-                                continue
-                            end
-                            Arblib.add!(S[j][p,q],S[j][p,q], dot(scratch, sdp.A[j][l][1,1][q]))
+                # high rank matrices always have one subblock
+                X_inv_block = similar(X_inv.blocks[j].blocks[l])
+                Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
+                Threads.@threads for p in collect(keys(sdp.A[j][l][1,1])) #Not sure if we should do this threaded or the matrix multiplications
+                    scratch = similar(X_inv_block)
+                    Arblib.mul!(scratch, X_inv_block, sdp.A[j][l][1,1][p])
+                    Arblib.mul!(scratch, scratch, Y.blocks[j].blocks[l])
+                    for q in keys(sdp.A[j][l][1,1])
+                        # We can do only the upper triangular part here, so q >= p
+                        if q<p
+                            continue
                         end
-                    end
-                else
-                    X_inv_block = similar(X_inv.blocks[j].blocks[l])
-                    Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
-                    for r1 in eachrow(sdp.A[j][l]), s1 in eachcol(sdp.A[j][l])
-                        Threads.@threads for p in collect(keys(sdp.A[j][l][r1,s1])) #Not sure if we should do this threaded or the matrix multiplications
-                            scratch = ArbRefMatrix(size(sdp.A[j][l],1)*delta,delta,prec=prec)
-                            Arblib.mul!(scratch, X_inv_block[:,(r1-1)*delta+1:r1*delta], sdp.A[j][l][r1,s1][p])
-                            Arblib.mul!(scratch, scratch, Y.blocks[j].blocks[l][(s1-1)*delta+1:s1*delta, :])
-                            for r2 in eachrow(sdp.A[j][l]), s2 in eachcol(sdp.A[j][l])
-                                for q in keys(sdp.A[j][l][r2,s2])
-                                    # We can do only the upper triangular part here, so q >= p
-                                    if q<p
-                                        continue
-                                    end
-                                    Arblib.add!(S[j][p,q],S[j][p,q], dot(scratch[(r2-1)*delta+1:r2*delta, (s2-1)*delta+1:s2*delta], sdp.A[j][l][r2,s2][q]))
-                                end
-                            end
-                        end
+                        Arblib.add!(S[j][p,q],S[j][p,q], dot(scratch, sdp.A[j][l][1,1][q]))
                     end
                 end
             else # low rank case
-
 
                 # We basically have three options for using the cholesky factors
                 # 1) form the full matrix corresponding to rightvecs and left vecs and do triangular solves and matrix multiplications.
@@ -1103,12 +1081,9 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
             #if A[j][l] is of high rank, we can just do the normal matrix inner product
             delta = div(size(Z.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
             if high_ranks[j][l]
-                for r=1:size(sdp.A[j][l],1)
-                    for s=1:r
-                        for p in keys(sdp.A[j][l][r,s])
-                            Arblib.add!(result[j_idx + p], dot(Z.blocks[j].blocks[l][(r-1)*delta+1:r*delta, (s-1)*delta+1:s*delta], sdp.A[j][l][r,s][p]),result[j_idx + p])  
-                        end
-                    end
+                #high rank matrices only have 1 subblock
+                for p in keys(sdp.A[j][l][r,s])
+                    Arblib.add!(result[j_idx + p], dot(Z.blocks[j].blocks[l], sdp.A[j][l][1,1][p]),result[j_idx + p])  
                 end
             else
                 ones = ArbRefMatrix(1,delta,prec=precision(Z))
@@ -1172,13 +1147,9 @@ function trace_A(sdp, (Y, A_Y), vecs_left,vecs_right,high_ranks)
         for l in eachindex(sdp.A[j])
             #for high rank matrices A[j][l], we need to take a standard inner product.
             if high_ranks[j][l]
-                delta = div(size(Y.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
-                for r=1:size(sdp.A[j][l],1)
-                    for s=1:r
-                        for p in keys(sdp.A[j][l][r,s])
-                            Arblib.add!(result[j_idx + p], dot(Y.blocks[j].blocks[l][(r-1)*delta+1:r*delta, (s-1)*delta+1:s*delta], sdp.A[j][l][r,s][p]),result[j_idx + p])  
-                        end
-                    end
+                #high rank matrices have only one subblock
+                for p in keys(sdp.A[j][l][r,s])
+                    Arblib.add!(result[j_idx + p], dot(Y.blocks[j].blocks[l], sdp.A[j][l][r,s][p]),result[j_idx + p])  
                 end
             else
                 for r=1:size(sdp.A[j][l],1)
@@ -1216,27 +1187,19 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
         for l in eachindex(sdp.A[j])
             Arblib.zero!(initial_matrix.blocks[j].blocks[l])
             #assuming all subblocks have the same size: (If we ever want to change that: make Q inside the r,s loops since only then we will know the size)
-            delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
-            #initialize the scratch spaces
-            Q = ArbRefMatrix(delta,delta,prec=precision(a))
             #Here we again need to make a distinction between low and high rank matrices A
             # High rank is easy: we can just add x_p * A_p
             if high_ranks[j][l]
-                for r=1:size(sdp.A[j][l],1)
-                    for s = 1:r
-                        Arblib.zero!(Q)
-                        for p in keys(sdp.A[j][l][r,s])
-                            Arblib.addmul!(Q, sdp.A[j][l][r,s][p], a[j_idx+p,1])
-                        end
-                        initial_matrix.blocks[j].blocks[l][(r-1)*delta+1:r*delta,(s-1)*delta+1:s*delta] = Q
-                    end
+                #high rank matrices only have one subblock
+                for p in keys(sdp.A[j][l][1,1])
+                    Arblib.addmul!(initial_matrix.blocks[j].blocks[l], sdp.A[j][l][1,1][p], a[j_idx+p,1])
                 end
-            else
-                
+            else              
+                delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
+                #initialize the scratch spaces
+                Q = ArbRefMatrix(delta,delta,prec=precision(a))
                 cur = Arb(1,prec=precision(a))
                 vec = ArbRefMatrix(delta,1,prec=precision(a))
-                
-
 
                 for r = 1:size(sdp.A[j][l],1)
                     for s = 1:r
