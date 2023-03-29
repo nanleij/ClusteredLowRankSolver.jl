@@ -877,14 +877,12 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                 #for high_rank matrices we don't compute A_Y. We compute the contribution to S_{pq} by
                 #   dot(A[j][l][p], X^-1 * A[j][l][q] * Y)
                 # high rank matrices always have one subblock
-                X_inv_block = similar(X_inv.blocks[j].blocks[l])
-                Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
                 Threads.@threads for p in collect(keys(sdp.A[j][l][1,1])) #Not sure if we should do this threaded or the matrix multiplications
-                    scratch = similar(X_inv_block)
-                    Arblib.mul!(scratch, X_inv_block, sdp.A[j][l][1,1][p])
+                    scratch = similar(X_inv.blocks[j].blocks[l])
+                    Arblib.solve_cho_precomp!(scratch, X_inv.blocks[j].blocks[l], sdp.A[j][l][1,1][p])
                     Arblib.mul!(scratch, scratch, Y.blocks[j].blocks[l])
                     for q in keys(sdp.A[j][l][1,1])
-                        # We can do only the upper triangular part here, so q >= p
+                        # We only do the upper triangular part here, so q >= p
                         if q<p
                             continue
                         end

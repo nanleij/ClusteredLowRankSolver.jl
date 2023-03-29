@@ -291,3 +291,23 @@ end
 # However, then we need to define precision for ArbMatrices and BigFloats
 precision(P::BlockDiagonal) = precision(P.blocks[1]) #we assume that all blocks have the same precision
 precision(x) = Base.precision(x) #for other things, just use the Base version
+
+
+function F3(A1,X::T, A2,Y::T) where T<:Union{ArbMatrix, ArbRefMatrix}
+    # compute dot(A, B*C*D) in with A1,A2 sparse (in sparse formate of SparseArrays)
+    res = Arb(0)
+    I1,J1,V1 = findnz(A1)
+    I2,J2,V2 = findnz(A2)
+    tmp = Arb(0)
+    tmp2 = Arb(0)
+    for (i1,j1,v1) in zip(I1,J1,V1)
+        Arblib.zero!(tmp2)
+        for (i2,j2,v2) in zip(I2,J2,V2)
+            Arblib.zero!(tmp)
+            Arblib.mul!(tmp,X[i2,i1], Y[j2,j1])
+            Arblib.addmul!(tmp2,tmp, v2)
+        end
+        Arblib.addmul!(res, tmp2, v1)
+    end
+    return res
+end
