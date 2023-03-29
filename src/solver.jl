@@ -1082,7 +1082,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
             delta = div(size(Z.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
             if high_ranks[j][l]
                 #high rank matrices only have 1 subblock
-                for p in keys(sdp.A[j][l][r,s])
+                for p in keys(sdp.A[j][l][1,1])
                     Arblib.add!(result[j_idx + p], dot(Z.blocks[j].blocks[l], sdp.A[j][l][1,1][p]),result[j_idx + p])  
                 end
             else
@@ -1148,8 +1148,8 @@ function trace_A(sdp, (Y, A_Y), vecs_left,vecs_right,high_ranks)
             #for high rank matrices A[j][l], we need to take a standard inner product.
             if high_ranks[j][l]
                 #high rank matrices have only one subblock
-                for p in keys(sdp.A[j][l][r,s])
-                    Arblib.add!(result[j_idx + p], dot(Y.blocks[j].blocks[l], sdp.A[j][l][r,s][p]),result[j_idx + p])  
+                for p in keys(sdp.A[j][l][1,1])
+                    Arblib.add!(result[j_idx + p], dot(Y.blocks[j].blocks[l], sdp.A[j][l][1,1][p]),result[j_idx + p])  
                 end
             else
                 for r=1:size(sdp.A[j][l],1)
