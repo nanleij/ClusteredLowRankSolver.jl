@@ -32,7 +32,7 @@ function delsarte(n, d,costheta, precision=512; all_free = false, kwargs...)
 
     #Construct the SDP with or without using free variables for the a_k
     if all_free
-        sdp = ClusteredLowRankSDP(sos,[k for k=0:2d])
+        sdp = ClusteredLowRankSDP(sos,as_free = [k for k=0:2d])
     else
         sdp = ClusteredLowRankSDP(sos)
     end
@@ -69,7 +69,7 @@ function delsarte_highrank(n, d,costheta, precision=512; all_free = false, kwarg
 
     #Construct the SDP with or without using free variables for the a_k
     if all_free
-        sdp = ClusteredLowRankSDP(sos,[k for k=0:2d])
+        sdp = ClusteredLowRankSDP(sos, as_free = [k for k=0:2d])
     else
         sdp = ClusteredLowRankSDP(sos)
     end
