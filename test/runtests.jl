@@ -14,7 +14,7 @@ using Test
         using .Delsarte
         _, sol, _, _ = delsarte(3, 10, 1//2)
         @test sol.dual_objective ≈ 13.158314 atol=1e-5
-        _, sol, _, _ = delsarte(8, 10, 1//2)
+        _, sol, _, _ = delsarte(8, 10, 1//2, all_free=true)
         @test sol.dual_objective ≈ 240 atol = 1e-10
 
         _,sol, _,_ = delsarte_highrank(3,10,1//2)
@@ -30,7 +30,7 @@ using Test
 
         include("../examples/ThreePointBound.jl")
         using .ThreePointBound
-        _, sol, _, _ = three_point_spherical_cap(3, 6, 1//2, 256, true)
+        _, sol, _, _ = three_point_spherical_cap(3, 6, 1//2, 256)
         @test sol.dual_objective ≈ 12.718780 atol=1e-5
     end
 
