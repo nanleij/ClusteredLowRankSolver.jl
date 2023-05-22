@@ -344,7 +344,7 @@ function solvesdp(
         allocs[3] += @allocated begin
             time_predictor_dir = @elapsed begin
                 times_predictor_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks, reduce_memory = reduce_memory)
             end
         end
 
@@ -375,7 +375,7 @@ function solvesdp(
         allocs[4] += @allocated begin
             time_corrector_dir = @elapsed begin
                 times_corrector_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks, reduce_memory = reduce_memory)
             end
         end
 
@@ -863,7 +863,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
     prec = precision(Y)
     # We have done some preprocessing: make an ArbMatrix of the unique vectors we need to use for Y_.,r etc,
     # and pointers from p,r,s to the right column/entry. Then we can just apply the matrix multiplication, and then later pick the entry the pointer is pointing towards.
-
+    mul_func = reduce_memory ? Arblib.mul_classical! : Arblib.approx_mul!
     # For <A_*, Y> we need bilinear_pairings_Y[r,s,(k,rnk),(k,rnk)]. So per r,s block, the diagonal
     if any(size(rightvecs[j][l][r],2) > 200 for j in eachindex(sdp.A) for l in eachindex(sdp.A[j]) for r=1:size(sdp.A[j][l],1))
         #We only need to do GC.gc() if there are a lot of allocations
@@ -886,7 +886,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                 Threads.@threads for p in collect(keys(sdp.A[j][l][1,1])) #Not sure if we should do this threaded or the matrix multiplications
                     scratch = similar(X_inv.blocks[j].blocks[l])
                     Arblib.solve_cho_precomp!(scratch, X_inv.blocks[j].blocks[l], sdp.A[j][l][1,1][p])
-                    Arblib.mul!(scratch, scratch, Y.blocks[j].blocks[l])
+                    mul_func(scratch, scratch, Y.blocks[j].blocks[l])
                     for q in keys(sdp.A[j][l][1,1])
                         # We only do the upper triangular part here, so q >= p
                         if q<p
