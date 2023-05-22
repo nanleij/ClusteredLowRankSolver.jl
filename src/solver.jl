@@ -38,6 +38,7 @@ Keyword arguments:
   - `verbose` (default: `true`): print information after every iteration if true
   - `step_length_threshold` (default: `10^-7`): the minimum step length allowed
   - `initial_solutions` (default: `[]`): if x,X,y,Y are given, use that instead of omega_p/d * I for the initial solutions
+  - `reduce_memory` (default: `false`): if true, use classical matrix multiplication instead of block matrix multiplication to reduce memory usage
 """
 function solvesdp(
     sdp::ClusteredLowRankSDP,
@@ -61,6 +62,7 @@ function solvesdp(
     #experimental & testing:
     matmul_prec = prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
 	testing = false, # print the times of the first two iterations. This is for testing purposes
+    reduce_memory = false, # if true, save memory by doing classical matrix multiplication instead of block-matrix multiplication in certain cases
 )
     # the default values mostly come from Simmons-Duffin original paper, or from the default values of SDPA-GMP (slow but stable mode)
 
@@ -253,7 +255,7 @@ function solvesdp(
     d_obj = compute_dual_objective(sdp, y, Y)
     dual_gap = compute_duality_gap(sdp, x, y, Y)
     time_res = @elapsed begin
-        compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
+        compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks, reduce_memory = reduce_memory)
     end
     primal_error = compute_primal_error(P, p)
     dual_error = compute_dual_error(d)
@@ -299,7 +301,7 @@ function solvesdp(
 
         #step 4
         time_R = @elapsed begin
-            compute_residual_R!(R, X, Y, mu_p,threadinginfo)
+            compute_residual_R!(R, X, Y, mu_p,threadinginfo, reduce_memory = reduce_memory)
         end
 
         # We compute the cholesky decomposition, and then solve a triangular system when we use it.
@@ -311,7 +313,7 @@ function solvesdp(
                     X_inv.blocks[j].blocks[l],
                 ) #ignore the error bounds. Most of the error bounds will be 0 due to the use of approx_cholesky already
                 if status == 0
-                    @show j,l
+                    @debug j,l
                     throw(SolverFailure(
                         "The cholesky decomposition of X was not computed correctly. Try again with higher precision",
                     ))
@@ -325,7 +327,7 @@ function solvesdp(
         allocs[1] += @allocated begin
             time_decomp = @elapsed begin
                 time_schur, time_cholS, time_LinvB, time_Q, time_cholQ =
-                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right,high_ranks, prec=matmul_prec)
+                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right,high_ranks, prec=matmul_prec, reduce_memory = reduce_memory)
             end
         end
 
@@ -333,7 +335,7 @@ function solvesdp(
         # Compute the residuals
         allocs[2] += @allocated begin
             time_res = @elapsed begin
-                compute_residuals!(sdp, x, X, y, (Y, A_Y), P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
+                compute_residuals!(sdp, x, X, y, (Y, A_Y), P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks, reduce_memory = reduce_memory)
             end
         end
 
@@ -358,7 +360,7 @@ function solvesdp(
         # step 6: the corrector search direction
 		# Compute R_c
         time_R += @elapsed begin
-            compute_residual_R!(R, X, Y, mu_c, dX, dY, threadinginfo)
+            compute_residual_R!(R, X, Y, mu_c, dX, dY, threadinginfo, reduce_memory = reduce_memory)
         end
 		primal_error = compute_primal_error(P, p)
 		dual_error = compute_dual_error(d)
@@ -661,7 +663,7 @@ function dot_c(sdp, x)
 end
 
 """Compute the dual residue d = c - <A_*, Y> - By"""
-function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks)
+function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks; reduce_memory = false)
     cur_idx = 0
     for j in eachindex(sdp.c)
         d[cur_idx+1:cur_idx+size(sdp.c[j],1),1] = sdp.c[j]
@@ -670,14 +672,14 @@ function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks)
 	# Maybe we can do this a bit more efficient, without copying sdp.B[j] into the matrix B
     B::ArbRefMatrix = vcat(sdp.B...)
     Arblib.sub!(d,d,Arblib.approx_mul!(similar(d),B,y))
-    Arblib.sub!(d,d,trace_A(sdp,Y,vecs_left,vecs_right,high_ranks))
+    Arblib.sub!(d,d,trace_A(sdp,Y,vecs_left,vecs_right,high_ranks, reduce_memory = reduce_memory))
     return d
 end
 
 """Compute the residuals P,p and d."""
-function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vecs_right,high_ranks)
+function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vecs_right,high_ranks;  reduce_memory = false)
     # P = ∑_i x_i A_i - X - C, (+ C if we are minimizing)
-    compute_weighted_A!(P, sdp, x,vecs_left,high_ranks)
+    compute_weighted_A!(P, sdp, x,vecs_left,high_ranks, reduce_memory = reduce_memory)
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.sub!(P.blocks[j].blocks[l],P.blocks[j].blocks[l],X.blocks[j].blocks[l])
         if sdp.maximize  # normal
@@ -689,7 +691,7 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vec
     end
 
     # d = c - <A_*, Y> - By
-    calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks)
+    calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks; reduce_memory = reduce_memory)
     Arblib.get_mid!(d, d)
 
     # p = b - B^T x (-b if we are minimizing)
@@ -754,30 +756,34 @@ end
 
 
 """Compute the residual R, with or without second order term """
-function compute_residual_R!(R, X, Y, mu,threadinginfo)
+function compute_residual_R!(R, X, Y, mu,threadinginfo; reduce_memory = false)
+    mul_func = reduce_memory ? Arblib.mul_classical! : Arblib.approx_mul!
     # R = mu*I - X * Y
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.one!(R.blocks[j].blocks[l])
         Arblib.mul!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], mu)
         XY = similar(R.blocks[j].blocks[l])
-        Arblib.approx_mul!(XY,
+        mul_func(XY,
             X.blocks[j].blocks[l],
             Y.blocks[j].blocks[l])
         Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], XY)
+        Arblib.get_mid!(R.blocks[j].blocks[l],R.blocks[j].blocks[l])
     end
     return R
 end
 
-function compute_residual_R!(R, X, Y, mu, dX, dY,threadinginfo)
+function compute_residual_R!(R, X, Y, mu, dX, dY,threadinginfo; reduce_memory = false)
+    mul_func = reduce_memory ? Arblib.mul_classical! : Arblib.approx_mul!
     # R = mu*I - X Y - dX dY
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.one!(R.blocks[j].blocks[l])
         Arblib.mul!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], mu)
         temp = similar(R.blocks[j].blocks[l])
-        Arblib.approx_mul!(temp, X.blocks[j].blocks[l], Y.blocks[j].blocks[l])
+        mul_func(temp, X.blocks[j].blocks[l], Y.blocks[j].blocks[l])
         Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], temp)
-        Arblib.approx_mul!(temp, dX.blocks[j].blocks[l], dY.blocks[j].blocks[l])
+        mul_func(temp, dX.blocks[j].blocks[l], dY.blocks[j].blocks[l])
         Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], temp)
+        Arblib.get_mid!(R.blocks[j].blocks[l],R.blocks[j].blocks[l])
     end
     return R
 end
@@ -851,7 +857,7 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
 end
 
 """Compute S, integrated with the precomputing of the bilinear pairings"""
-function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,pointers_left,pointers_right,high_ranks;matmul_prec=precision(S[1]))
+function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,pointers_left,pointers_right,high_ranks;matmul_prec=precision(S[1]), reduce_memory = false)
     #NOTE: somewhere in this function, the memory is allocated but not always released. Goes from 13% before to 20% just after this function.
     #   Apparently, calling 'ccall(:malloc_trim, Cvoid, (Cint,), 0)' could free (some) more memory
     prec = precision(Y)
@@ -902,33 +908,32 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                 # We use method 3, since it doesn't seem to have much effect on the precision we need.
                 X_inv_block = similar(X_inv.blocks[j].blocks[l])
                 Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
-                #if the matrices are not exact, Arblib.approx_mul! will copy the midpoints to a temporary matrix
                 Arblib.get_mid!(X_inv_block,X_inv_block)
 
                 if size(sdp.A[j][l],1) == 1 #only one block, so we can do it slightly more memory efficient (avoid copying by indexing)
                     part = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][1],2), prec=matmul_prec)
-                    matmul_threaded!(part,Y.blocks[j].blocks[l], rightvecs[j][l][1], prec=matmul_prec)
-                    matmul_threaded!(bilinear_pairings_Y[j][l][1,1], leftvecs[j][l][1], part,prec=matmul_prec)
+                    matmul_threaded!(part,Y.blocks[j].blocks[l], rightvecs[j][l][1], prec=matmul_prec, reduce_memory = reduce_memory)
+                    matmul_threaded!(bilinear_pairings_Y[j][l][1,1], leftvecs[j][l][1], part,prec=matmul_prec,  reduce_memory = reduce_memory)
                     Arblib.get_mid!(bilinear_pairings_Y[j][l][1,1], bilinear_pairings_Y[j][l][1,1])
 
                     # surprisingly, it doesn't matter a lot whether this is done with Xinv or with Xchol (i.e. explicite inverse or triangular solves from cholesky)
                     # Maybe it matters more when the conditioning of the vandermonde matrix is worse?
-                    matmul_threaded!(part, X_inv_block,rightvecs[j][l][1], prec=matmul_prec)
-                    matmul_threaded!(bilinear_pairings_Xinv[j][l][1,1], leftvecs[j][l][1], part, prec=matmul_prec)
+                    matmul_threaded!(part, X_inv_block,rightvecs[j][l][1], prec=matmul_prec, reduce_memory = reduce_memory)
+                    matmul_threaded!(bilinear_pairings_Xinv[j][l][1,1], leftvecs[j][l][1], part, prec=matmul_prec, reduce_memory = reduce_memory)
                     Arblib.get_mid!(bilinear_pairings_Xinv[j][l][1,1], bilinear_pairings_Xinv[j][l][1,1])
                 else #more blocks
                     for r=1:size(sdp.A[j][l],2)
                         part_r = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][r],2), prec=matmul_prec)
-                        matmul_threaded!(part_r, Y.blocks[j].blocks[l][:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
+                        matmul_threaded!(part_r, Y.blocks[j].blocks[l][:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec, reduce_memory = reduce_memory)
                         Arblib.get_mid!(part_r, part_r)
                         for s=1:r
-                            matmul_threaded!(bilinear_pairings_Y[j][l][s,r], leftvecs[j][l][s], part_r[(s-1)*delta+1:s*delta,:], prec=matmul_prec)#,opt=4)
+                            matmul_threaded!(bilinear_pairings_Y[j][l][s,r], leftvecs[j][l][s], part_r[(s-1)*delta+1:s*delta,:], prec=matmul_prec, reduce_memory = reduce_memory)#,opt=4)
                             Arblib.get_mid!(bilinear_pairings_Y[j][l][s,r], bilinear_pairings_Y[j][l][s,r])
                         end
-                        matmul_threaded!(part_r, X_inv_block[:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
+                        matmul_threaded!(part_r, X_inv_block[:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec, reduce_memory = reduce_memory)
                         Arblib.get_mid!(part_r, part_r)
                         for s=1:r
-                            matmul_threaded!(bilinear_pairings_Xinv[j][l][s,r],leftvecs[j][l][s],part_r[(s-1)*delta+1:s*delta,:],prec=matmul_prec)#,opt=4)
+                            matmul_threaded!(bilinear_pairings_Xinv[j][l][s,r],leftvecs[j][l][s],part_r[(s-1)*delta+1:s*delta,:],prec=matmul_prec, reduce_memory = reduce_memory)#,opt=4)
                             Arblib.get_mid!(bilinear_pairings_Xinv[j][l][s,r],bilinear_pairings_Xinv[j][l][s,r])
                         end
                     end
@@ -1011,7 +1016,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
 end
 
 """Compute the decomposition of [S B; B^T 0]"""
-function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks; prec=precision(S[1]))
+function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks; prec=precision(S[1]), reduce_memory = false)
     # 1) pre compute bilinear basis
     # 2) compute S
     # 3) compute cholesky decomposition S = LL^T
@@ -1019,7 +1024,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 
     # 1,2) compute the bilinear pairings and S, integrated. (per j,l, compute first pairings then S[j] part)
     time_schur = @elapsed begin
-        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks,matmul_prec=prec)
+        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks,matmul_prec=prec, reduce_memory = reduce_memory)
     end
 
     #3) cholesky decomposition of S
@@ -1046,7 +1051,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
     #compute Q = B^T L^-T L^-1 B
     time_Q = @elapsed begin
         total_LinvB::ArbRefMatrix = vcat(LinvB...)
-        matmul_threaded!(Q,transpose(total_LinvB),total_LinvB)
+        matmul_threaded!(Q,transpose(total_LinvB),total_LinvB, reduce_memory = reduce_memory)
         Arblib.get_mid!(Q,Q)
     end
 
@@ -1067,7 +1072,8 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 end
 
 """Compute the vector <A_*,Z> = Tr(A_* Z) for one or all constraints"""
-function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
+function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks; reduce_memory = false)
+    mul_func = reduce_memory ? Arblib.mul_classical! : Arblib.approx_mul!
     #Assumption: Z is symmetric
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(Z))
     Arblib.zero!(result)
@@ -1106,9 +1112,10 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
                         Threads.@threads for i=1:used_threads
                             ZV = ArbRefMatrix(delta,indices[i+1]-indices[i],prec=precision(Z))
                             # we can parallellize here over the samples (rows of vs_transpose)
-                            Arblib.approx_mul!(ZV,Z.blocks[j].blocks[l][(r-1)*delta+1:r*delta, (s-1)*delta+1:s*delta],vecs_right[j][l][r,s][:,indices[i]+1:indices[i+1]])
+                            mul_func(ZV,Z.blocks[j].blocks[l][(r-1)*delta+1:r*delta, (s-1)*delta+1:s*delta],vecs_right[j][l][r,s][:,indices[i]+1:indices[i+1]])
                             Arblib.mul_entrywise!(ZV,ZV,vecs_left[j][l][r,s][:,indices[i]+1:indices[i+1]])
-                            Arblib.approx_mul!(result_parts[i],ones,ZV)
+                            Arblib.get_mid!(ZV,ZV)
+                            mul_func(result_parts[i],ones,ZV)
                         end
                         #Because we did the multiplications in this order we have row vectors to concatenate
                         result_part = hcat(result_parts...)
@@ -1132,10 +1139,11 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
         end
         j_idx += size(sdp.c[j],1)
     end
+    Arblib.get_mid!(result, result)
     return result
 end
 
-function trace_A(sdp, (Y, A_Y), vecs_left,vecs_right,high_ranks)
+function trace_A(sdp, (Y, A_Y), vecs_left,vecs_right,high_ranks; reduce_memory = false)
     #Here we have precomputed v^T A v already, so we dont need the vectors. But it also doesnt cost extra time, so for ease of programming we allow them
     # So what we still need to do is get the right entries from A_Y, multiply them by the right eigenvalues and sum them to get entries corresponding to (j,p)
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(sdp.b))
@@ -1173,11 +1181,12 @@ function trace_A(sdp, (Y, A_Y), vecs_left,vecs_right,high_ranks)
         end
         j_idx += size(sdp.c[j],1)
     end
+    Arblib.get_mid!(result,result)
     return result
 end
 #
 """Set initial_matrix to ∑_i a_i A_i"""
-function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
+function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks; reduce_memory = false)
     # initial_matrix is a BlockDiagonal matrix of BlockDiagonal matrices of ArbMatrices
     # We add the contributions to the (blocked) upper triangular, then symmetrize
     j_idx = 0
@@ -1221,7 +1230,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
                         Arblib.get_mid!(vecs_right,vecs_right)
 
                         # calculate V_rD * V_l^T
-                        matmul_threaded!(Q,vecs_right,vecs_left_transpose)
+                        matmul_threaded!(Q,vecs_right,vecs_left_transpose, reduce_memory = reduce_memory)
                         Arblib.get_mid!(Q,Q)
                         initial_matrix.blocks[j].blocks[l][(r-1)*delta+1:r*delta,(s-1)*delta+1:s*delta] = Q
                     end
@@ -1254,8 +1263,10 @@ function compute_search_direction!(
     Q,
     vecs_left,
     vecs_right,
-    high_ranks,
+    high_ranks;
+    reduce_memory = false
 )
+    mul_func = reduce_memory ? Arblib.mul_classical! : Arblib.approx_mul!
     prec = precision(Y)
     # using the decomposition, compute the search directions
     # 5) solve system with rhs -d - <A_*, Z>) for dx and rhs p for dy, where Z = X^{-1}(PY - R)
@@ -1268,8 +1279,9 @@ function compute_search_direction!(
             #Z = X_inv*(P*Y-R)
             #We use Z (dY) as scratch space; Z = X_inv ((PY)-R)
             #Note that dY is overwritten in the first multiplication, hence we don't have to zero it.
-            Arblib.approx_mul!(dY.blocks[j].blocks[l], P.blocks[j].blocks[l], Y.blocks[j].blocks[l])
+            mul_func(dY.blocks[j].blocks[l], P.blocks[j].blocks[l], Y.blocks[j].blocks[l])
             Arblib.sub!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], R.blocks[j].blocks[l])
+            Arblib.get_mid!(dY.blocks[j].blocks[l],dY.blocks[j].blocks[l])
             Arblib.solve_cho_precomp!(dY.blocks[j].blocks[l], X_inv.blocks[j].blocks[l], dY.blocks[j].blocks[l])
             #We symmetrize Z in order to use <A_*,Z> correctly (because when m[j][l]>1, we calculate contributions based on the upper triangular block)
             Arblib.transpose!(dX.blocks[j].blocks[l],dY.blocks[j].blocks[l]) #we use dX as scratch space for the transpose
@@ -1286,7 +1298,7 @@ function compute_search_direction!(
         #rhs_x = -d - <A_*,Z>
         #we use dx for rhs_x
         Arblib.neg!(dx,d)
-        Arblib.sub!(dx,dx,trace_A(sdp, dY,vecs_left,vecs_right,high_ranks))
+        Arblib.sub!(dx,dx,trace_A(sdp, dY,vecs_left,vecs_right,high_ranks, reduce_memory = reduce_memory))
         Arblib.get_mid!(dx, dx)
     end
 
@@ -1350,7 +1362,7 @@ function compute_search_direction!(
     time_dX = @elapsed begin
         #dX = ∑_i dx_i A_i + P
         #compute the sum
-        compute_weighted_A!(dX, sdp, dx,vecs_left,high_ranks)
+        compute_weighted_A!(dX, sdp, dx,vecs_left,high_ranks, reduce_memory = reduce_memory)
         #add P
         Threads.@threads for (j,l) in threadinginfo.jl_order
             Arblib.add!(dX.blocks[j].blocks[l],dX.blocks[j].blocks[l],P.blocks[j].blocks[l])
@@ -1365,8 +1377,9 @@ function compute_search_direction!(
             Arblib.zero!(dY.blocks[j].blocks[l])
             #Again, we use dY as scratch space, working from inner brackets to outer brackets.
             #Note that every block of dY is overwritten in the first multiplication. Hence we don't have to zero it
-            Arblib.approx_mul!(dY.blocks[j].blocks[l], dX.blocks[j].blocks[l], Y.blocks[j].blocks[l])
+            mul_func(dY.blocks[j].blocks[l], dX.blocks[j].blocks[l], Y.blocks[j].blocks[l])
             Arblib.sub!(dY.blocks[j].blocks[l], R.blocks[j].blocks[l], dY.blocks[j].blocks[l])
+            Arblib.get_mid!(dY.blocks[j].blocks[l],dY.blocks[j].blocks[l])
             Arblib.solve_cho_precomp!(dY.blocks[j].blocks[l], X_inv.blocks[j].blocks[l], dY.blocks[j].blocks[l])
             #Symmetrize dY. Since we don't have extra scratch space, we need to create a new matrix for the transpose (implicitely)
             Arblib.add!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], transpose(dY.blocks[j].blocks[l]))

@@ -126,11 +126,20 @@ function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
     return x[unique_idx]
 end
 
-function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precision(C), opt::Int=0) where T<:Union{ArbMatrix, ArbRefMatrix}
+function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precision(C), opt::Int=0, reduce_memory = false) where T<:Union{ArbMatrix, ArbRefMatrix}
     # matrix multiplication C = A*B, using multithreading.
     # Note that this is not the same as Arblib.mul_threaded!(), because that uses the classical matrix multiplication with flint threads
     # We will have to tune the parameters, because Arblib does classical mat mul when some dimension of the matrix has size <= 40 (i.e. A has <= 40 rows or columns, or B has <=40 rows or columns)
     # We might have very rectangular matrices (i.e., the number of rows much larger than the number of columns or vice versa), in which case it is easy do distribute over threads. When the number of remaining rows/columns can be below their cutoff due to our threading, we might want to consider using less threads? or just call the block version directly?
+
+    if reduce_memory
+        func = Arblib.mul_classical!
+    else
+        func = Arblib.approx_mul!
+    end
+    #make sure everything is already exact, so approx_mul! does not copy the midpoints in separate matrices
+    Arblib.get_mid!(A,A) 
+    Arblib.get_mid!(B,B)
 
     # n = Threads.nthreads()
     #check dimensions

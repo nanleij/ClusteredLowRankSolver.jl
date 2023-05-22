@@ -10,8 +10,8 @@ function distribute_weights_swapping(weights,n;nswaps = length(weights)^2)
             [collect(nstep*step+(i-1)*(step-1)+1:nstep*step+i*(step-1)) for i=1:n-nstep])
     set_weights = [sum(weights[sets[i]]) for i=1:length(sets)] #the total weights
 
-    # edge case: less than 1 weight for every core
-    if length(weights) <= n
+    # edge case: less than 1 weight for every core, or only one core
+    if length(weights) <= n || n == 1
         return sets,set_weights,[weights[s] for s in sets]
     end
 
