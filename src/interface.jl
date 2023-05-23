@@ -491,18 +491,20 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
             end
         end
         v = [[Dict{Int,Union{LowRankMat, ArbRefMatrix}}() for _=1:m, _=1:m] for (k, m) in nsubblocks]
-		subblock_keys = collect(keys(nsubblocks))
+		subblock_keys = collect(keys(nsubblocks)) #fix an order
+        subblock_keys_dict = Dict(k=>i for (i,k) in enumerate(subblock_keys))
 
         i = 1
         for constraintindex in constraintindices
             constraint = sos.constraints[constraintindex]
             for (idx,sample) in enumerate(constraint.samples) #This can take quite long for a large amount of samples & a large basis
                 for block in keys(constraint.matrixcoeff)
-                    v[findfirst(isequal(block.l), subblock_keys)][block.r,block.s][i] = evaluate(constraint.matrixcoeff[block], sample,scaling = constraint.scalings[idx],prec=prec)
+                    #we can make a dict from subblock_keys to indices?
+                    v[subblock_keys_dict[block.l]][block.r,block.s][i] = evaluate(constraint.matrixcoeff[block], sample,scaling = constraint.scalings[idx],prec=prec)
                     # We can set the s,r block here to the transpose of the r,s block. Or to 1/2 * the transpose if we would want that.
                 end
                 for l in keys(highranks)
-                    vidx = findfirst(isequal(l), subblock_keys)
+                    vidx = subblock_keys_dict[l]
                     if highranks[l] 
                         all_blocks = ArbRefMatrix[get(v[vidx][r,s], i, ArbRefMatrix(zeros(subblocksizes[l],subblocksizes[l]),prec=prec)) for r=1:nsubblocks[l] for s=1:nsubblocks[l]]
                         v[vidx][1,1][i] = hvcat(nsubblocks[l], all_blocks...)
@@ -514,7 +516,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
         #contract high-rank blocks (only (r,s)=(1,1) is used)
         for l in keys(highranks)
             if highranks[l]
-                vidx = findfirst(isequal(l), subblock_keys)
+                vidx = subblock_keys_dict[l]
                 v[vidx] = [v[vidx][1,1] for _=1:1, _=1:1]
             end
         end
@@ -524,7 +526,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
         M = [[ArbRefMatrix(subblocksizes[l], subblocksizes[l],prec=prec) for r=1:m, s=1:m] for (l, m) in nsubblocks]
         for block in keys(sos.objective.matrixcoeff)
             if block.l in clusters[clusterindex]
-                M[findfirst(isequal(block.l), subblock_keys)][block.r, block.s] = ArbRefMatrix(sos.objective.matrixcoeff[block],prec=prec)
+                M[subblock_keys_dict[block.l]][block.r, block.s] = ArbRefMatrix(sos.objective.matrixcoeff[block],prec=prec)
             end
         end
         push!(C, [ArbRefMatrix(hvcat(size(S,2), [S[r,s] for r=1:size(S,1) for s=1:size(S,2)]...),prec=prec) for S in M])
@@ -541,6 +543,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
         union!(freecoefflabels, keys(constraint.freecoeff))
     end
     freecoefflabels = collect(freecoefflabels) #We want an ordering for B and b
+    freecoefflabels_dict = Dict(k=>i for (i,k) in enumerate(freecoefflabels))
 
     # B is a vector of the matrices B^j
     B = ArbRefMatrix[]
@@ -552,7 +555,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                 s = sos.constraints[constraintindex].samples[s_idx]
                 scaling = sos.constraints[constraintindex].scalings[s_idx]
                 for (k,v) in sos.constraints[constraintindex].freecoeff
-                    constraint_B[s_idx,findfirst(isequal(k),freecoefflabels)] = Arb(scaling*evaluate(v,s))
+                    constraint_B[s_idx,freecoefflabels_dict[k]] = Arb(scaling*evaluate(v,s))
                 end
             end
             push!(Bj,constraint_B)
@@ -566,7 +569,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
 
     b = ArbRefMatrix(length(freecoefflabels),1,prec=prec)
     for (k,v) in sos.objective.freecoeff
-        b[findfirst(isequal(k), freecoefflabels)] = Arb(v)
+        b[freecoefflabels_dict[k]] = Arb(v)
     end
     ClusteredLowRankSDP(sos.maximize, Arb(sos.objective.constant,prec=prec), A, B, c, C_block, b, matrix_coeff_names,freecoefflabels)
 end
