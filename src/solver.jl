@@ -247,6 +247,7 @@ function solvesdp(
         ArbRefMatrix(size(sdp.c[j],1), size(sdp.b,1), prec = prec) for j in eachindex(sdp.A)
     ]
     Q = ArbRefMatrix(size(sdp.b,1),size(sdp.b,1),prec=prec)
+    tempX = similar(X) # we need this scratch space several times each iteration
 
     #errors and feasibility
     p_obj = compute_primal_objective(sdp, x)
@@ -299,7 +300,7 @@ function solvesdp(
 
         #step 4
         time_R = @elapsed begin
-            compute_residual_R!(R, X, Y, mu_p,threadinginfo)
+            compute_residual_R!(R, X, Y, mu_p, tempX, threadinginfo)
         end
 
         # We compute the cholesky decomposition, and then solve a triangular system when we use it.
@@ -325,7 +326,7 @@ function solvesdp(
         allocs[1] += @allocated begin
             time_decomp = @elapsed begin
                 time_schur, time_cholS, time_LinvB, time_Q, time_cholQ =
-                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right,high_ranks, prec=matmul_prec)
+                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, tempX, threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right,high_ranks, prec=matmul_prec)
             end
         end
 
@@ -342,13 +343,14 @@ function solvesdp(
         allocs[3] += @allocated begin
             time_predictor_dir = @elapsed begin
                 times_predictor_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, tempX, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
             end
         end
 
 
         # step 5: compute mu_c
-        r = dot(X + dX, Y + dY) / (mu * size(X, 1))
+        #TODO: use threads
+        r = (dot(X, Y) + dot(X, dY) + dot(dX, Y) + dot(dX, dY)) / (mu * size(X, 1)) 
         beta = r < 1 ? r^2 : r
         beta_c =
             pd_feas ? min(max(beta_feasible, beta), Arb(1, prec = prec)) :
@@ -358,7 +360,7 @@ function solvesdp(
         # step 6: the corrector search direction
 		# Compute R_c
         time_R += @elapsed begin
-            compute_residual_R!(R, X, Y, mu_c, dX, dY, threadinginfo)
+            compute_residual_R!(R, X, Y, mu_c, dX, dY, tempX, threadinginfo)
         end
 		primal_error = compute_primal_error(P, p)
 		dual_error = compute_dual_error(d)
@@ -373,7 +375,7 @@ function solvesdp(
         allocs[4] += @allocated begin
             time_corrector_dir = @elapsed begin
                 times_corrector_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, tempX, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
             end
         end
 
@@ -381,8 +383,8 @@ function solvesdp(
         # step 7: compute the step lengths
         allocs[5] += @allocated begin
             time_alpha = @elapsed begin
-                alpha_p = compute_step_length(X, dX, gamma, threadinginfo)
-                alpha_d = compute_step_length(Y, dY, gamma, threadinginfo)
+                alpha_p = compute_step_length(X, dX, gamma, tempX, threadinginfo)
+                alpha_d = compute_step_length(Y, dY, gamma, tempX, threadinginfo)
             end
         end
 
@@ -754,30 +756,26 @@ end
 
 
 """Compute the residual R, with or without second order term """
-function compute_residual_R!(R, X, Y, mu,threadinginfo)
+function compute_residual_R!(R, X, Y, mu,tempX, threadinginfo)
     # R = mu*I - X * Y
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.one!(R.blocks[j].blocks[l])
         Arblib.mul!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], mu)
-        XY = similar(R.blocks[j].blocks[l])
-        Arblib.approx_mul!(XY,
-            X.blocks[j].blocks[l],
-            Y.blocks[j].blocks[l])
-        Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], XY)
+        Arblib.approx_mul!(tempX.blocks[j].blocks[l], X.blocks[j].blocks[l], Y.blocks[j].blocks[l])
+        Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], tempX.blocks[j].blocks[l])
     end
     return R
 end
 
-function compute_residual_R!(R, X, Y, mu, dX, dY,threadinginfo)
+function compute_residual_R!(R, X, Y, mu, dX, dY, tempX, threadinginfo)
     # R = mu*I - X Y - dX dY
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.one!(R.blocks[j].blocks[l])
         Arblib.mul!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], mu)
-        temp = similar(R.blocks[j].blocks[l])
-        Arblib.approx_mul!(temp, X.blocks[j].blocks[l], Y.blocks[j].blocks[l])
-        Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], temp)
-        Arblib.approx_mul!(temp, dX.blocks[j].blocks[l], dY.blocks[j].blocks[l])
-        Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], temp)
+        Arblib.approx_mul!(tempX.blocks[j].blocks[l], X.blocks[j].blocks[l], Y.blocks[j].blocks[l])
+        Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], tempX.blocks[j].blocks[l])
+        Arblib.approx_mul!(tempX.blocks[j].blocks[l], dX.blocks[j].blocks[l], dY.blocks[j].blocks[l])
+        Arblib.sub!(R.blocks[j].blocks[l], R.blocks[j].blocks[l], tempX.blocks[j].blocks[l])
     end
     return R
 end
@@ -851,7 +849,7 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
 end
 
 """Compute S, integrated with the precomputing of the bilinear pairings"""
-function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,pointers_left,pointers_right,high_ranks;matmul_prec=precision(S[1]))
+function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,pointers_left,pointers_right,high_ranks, tempX;matmul_prec=precision(S[1]))
     #NOTE: somewhere in this function, the memory is allocated but not always released. Goes from 13% before to 20% just after this function.
     #   Apparently, calling 'ccall(:malloc_trim, Cvoid, (Cint,), 0)' could free (some) more memory
     prec = precision(Y)
@@ -900,10 +898,10 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                 # pro: we do have a block diagonal structure, so it'll save some time (probably)
                 # 3) Explicitely invert X using the cholesky factor, and use that to do it like Y. Since it doesn't really seem to matter which method we use, we'll do this. Because we do a matrix multiplication instead of a two
                 # We use method 3, since it doesn't seem to have much effect on the precision we need.
-                X_inv_block = similar(X_inv.blocks[j].blocks[l])
-                Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
+                # X_inv_block = similar(X_inv.blocks[j].blocks[l])
+                Arblib.inv_cho_precomp!(tempX.blocks[j].blocks[l],X_inv.blocks[j].blocks[l])
                 #if the matrices are not exact, Arblib.approx_mul! will copy the midpoints to a temporary matrix
-                Arblib.get_mid!(X_inv_block,X_inv_block)
+                Arblib.get_mid!(tempX.blocks[j].blocks[l],tempX.blocks[j].blocks[l])
 
                 if size(sdp.A[j][l],1) == 1 #only one block, so we can do it slightly more memory efficient (avoid copying by indexing)
                     part = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][1],2), prec=matmul_prec)
@@ -913,7 +911,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
 
                     # surprisingly, it doesn't matter a lot whether this is done with Xinv or with Xchol (i.e. explicite inverse or triangular solves from cholesky)
                     # Maybe it matters more when the conditioning of the vandermonde matrix is worse?
-                    matmul_threaded!(part, X_inv_block,rightvecs[j][l][1], prec=matmul_prec)
+                    matmul_threaded!(part, tempX.blocks[j].blocks[l],rightvecs[j][l][1], prec=matmul_prec)
                     matmul_threaded!(bilinear_pairings_Xinv[j][l][1,1], leftvecs[j][l][1], part, prec=matmul_prec)
                     Arblib.get_mid!(bilinear_pairings_Xinv[j][l][1,1], bilinear_pairings_Xinv[j][l][1,1])
                 else #more blocks
@@ -925,7 +923,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                             matmul_threaded!(bilinear_pairings_Y[j][l][s,r], leftvecs[j][l][s], part_r[(s-1)*delta+1:s*delta,:], prec=matmul_prec)#,opt=4)
                             Arblib.get_mid!(bilinear_pairings_Y[j][l][s,r], bilinear_pairings_Y[j][l][s,r])
                         end
-                        matmul_threaded!(part_r, X_inv_block[:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
+                        matmul_threaded!(part_r, tempX.blocks[j].blocks[l][:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
                         Arblib.get_mid!(part_r, part_r)
                         for s=1:r
                             matmul_threaded!(bilinear_pairings_Xinv[j][l][s,r],leftvecs[j][l][s],part_r[(s-1)*delta+1:s*delta,:],prec=matmul_prec)#,opt=4)
@@ -1011,7 +1009,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
 end
 
 """Compute the decomposition of [S B; B^T 0]"""
-function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks; prec=precision(S[1]))
+function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, tempX, threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks; prec=precision(S[1]))
     # 1) pre compute bilinear basis
     # 2) compute S
     # 3) compute cholesky decomposition S = LL^T
@@ -1019,7 +1017,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 
     # 1,2) compute the bilinear pairings and S, integrated. (per j,l, compute first pairings then S[j] part)
     time_schur = @elapsed begin
-        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks,matmul_prec=prec)
+        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks,tempX, matmul_prec=prec)
     end
 
     #3) cholesky decomposition of S
@@ -1248,6 +1246,7 @@ function compute_search_direction!(
     R,
     X_inv,
     Y,
+    tempX,
     threadinginfo,
     L,
     LinvB,
@@ -1272,8 +1271,8 @@ function compute_search_direction!(
             Arblib.sub!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], R.blocks[j].blocks[l])
             Arblib.solve_cho_precomp!(dY.blocks[j].blocks[l], X_inv.blocks[j].blocks[l], dY.blocks[j].blocks[l])
             #We symmetrize Z in order to use <A_*,Z> correctly (because when m[j][l]>1, we calculate contributions based on the upper triangular block)
-            Arblib.transpose!(dX.blocks[j].blocks[l],dY.blocks[j].blocks[l]) #we use dX as scratch space for the transpose
-            Arblib.add!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], dX.blocks[j].blocks[l])
+            Arblib.transpose!(tempX.blocks[j].blocks[l],dY.blocks[j].blocks[l]) #we use dX as scratch space for the transpose
+            Arblib.add!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], tempX.blocks[j].blocks[l])
             Arblib.div!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], 2)
             #remove the error bounds
             Arblib.get_mid!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l])
@@ -1369,7 +1368,8 @@ function compute_search_direction!(
             Arblib.sub!(dY.blocks[j].blocks[l], R.blocks[j].blocks[l], dY.blocks[j].blocks[l])
             Arblib.solve_cho_precomp!(dY.blocks[j].blocks[l], X_inv.blocks[j].blocks[l], dY.blocks[j].blocks[l])
             #Symmetrize dY. Since we don't have extra scratch space, we need to create a new matrix for the transpose (implicitely)
-            Arblib.add!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], transpose(dY.blocks[j].blocks[l]))
+            Arblib.transpose!(tempX.blocks[j].blocks[l], dY.blocks[j].blocks[l])
+            Arblib.add!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], tempX.blocks[j].blocks[l])
             Arblib.div!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l], 2)
             #remove the error bounds
             Arblib.get_mid!(dY.blocks[j].blocks[l], dY.blocks[j].blocks[l])
@@ -1386,6 +1386,7 @@ function compute_step_length(
     M::BlockDiagonal,
     dM::BlockDiagonal,
     gamma,
+    tempX,
     threadinginfo,
 )
     # M+ α dM is PSD iff I + α L^-1 dM L^-T is PSD iff α < - 1/eigmin(L^-1 dM L^-T).
@@ -1401,19 +1402,19 @@ function compute_step_length(
             Arblib.div!(min_eig_arb[j][l], dM.blocks[j].blocks[l][1,1],M.blocks[j].blocks[l][1,1])
             continue
         end
-        chol = similar(M.blocks[j].blocks[l])
-        succes = approx_cholesky!(chol, M.blocks[j].blocks[l])
+        # chol = similar(M.blocks[j].blocks[l])
+        succes = approx_cholesky!(tempX.blocks[j].blocks[l], M.blocks[j].blocks[l])
         if succes == 0
             throw(SolverFailure("The cholesky decomposition could not be computed during the computation of the step length. Please try again with a higher precision."))
         else
             # Arblib.get_mid!(chol,chol)
             LML = similar(dM.blocks[j].blocks[l])
             #LML = chol^-1 dMblock
-            Arblib.approx_solve_tril!(LML, chol, dM.blocks[j].blocks[l], 0)
+            Arblib.approx_solve_tril!(LML, tempX.blocks[j].blocks[l], dM.blocks[j].blocks[l], 0)
             Arblib.transpose!(LML, LML)
             Arblib.get_mid!(LML,LML)
             #temp LML = chol^-1 (chol^-1 dMblock)^T
-            Arblib.approx_solve_tril!(LML, chol, LML, 0)
+            Arblib.approx_solve_tril!(LML, tempX.blocks[j].blocks[l], LML, 0)
             #because we can usually use floating point numbers for this, we use a julia implementation of the Lanczos method in KrylovKit
             #TODO: extra check that the converged eigenvalue/vector pair is also converged in high precision?
             values, vecs, info = eigsolve(Float64.(LML), 1, :SR; krylovdim = 10, maxiter = min(100,size(LML,1)),tol=10^-5, issymmetric=true, eager=true)
@@ -1432,7 +1433,7 @@ function compute_step_length(
                 throw(SolverFailure("The eigenvalues could not be computed during the computation of the step length. Please try again with a higher precision."))
             else
                 real_arb = Arb(0, prec = prec)
-                for i = 1:length(eigenvalues)
+                for i in eachindex(eigenvalues)
                     Arblib.get_real!(real_arb, eigenvalues[i])
                     Arblib.min!(min_eig_arb[j][l],real_arb,min_eig_arb[j][l])
                 end
