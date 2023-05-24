@@ -864,10 +864,12 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
     end
     base = Sys.free_memory()/1024^3 #in GB
 
+    temp_window = ArbRefMatrix(0,0)
     for j in eachindex(sdp.A)
         Arblib.zero!(S[j])
         for l in eachindex(sdp.A[j])
-            delta = div(size(Y.blocks[j].blocks[l],1), size(sdp.A[j][l],1)) #NOTE: we assume that all blocks are of the same size
+            sz = size(Y.blocks[j].blocks[l],1)
+            delta = div(sz, size(sdp.A[j][l],1)) #NOTE: we assume that all blocks are of the same size
 
             #Here we make a distinction between low- and high-rank blocks 
             # For high-rank blocks we do not use the sparsity (if existing) at first. This might be optimized later, using the formula F*(k) of Fujisawa et al. (1997)
@@ -915,16 +917,24 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                 else #more blocks
                     for r=1:size(sdp.A[j][l],2)
                         part_r = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][r],2), prec=matmul_prec)
-                        matmul_threaded!(part_r, Y.blocks[j].blocks[l][:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
+                        Arblib.window_init!(temp_window, Y.blocks[j].blocks[l], 0, (r-1)*delta, sz, r*delta)
+                        matmul_threaded!(part_r, temp_window, rightvecs[j][l][r], prec=matmul_prec)
+                        Arblib.window_clear!(temp_window)
                         Arblib.get_mid!(part_r, part_r)
                         for s=1:r
-                            matmul_threaded!(bilinear_pairings_Y[j][l][s,r], leftvecs[j][l][s], part_r[(s-1)*delta+1:s*delta,:], prec=matmul_prec)#,opt=4)
+                            Arblib.window_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
+                            matmul_threaded!(bilinear_pairings_Y[j][l][s,r], leftvecs[j][l][s], temp_window, prec=matmul_prec)#,opt=4)
+                            Arblib.window_clear!(temp_window)
                             Arblib.get_mid!(bilinear_pairings_Y[j][l][s,r], bilinear_pairings_Y[j][l][s,r])
                         end
-                        matmul_threaded!(part_r, tempX.blocks[j].blocks[l][:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
+                        Arblib.window_init!(temp_window, tempX.blocks[j].blocks[l], 0, (r-1)*delta, sz, r*delta)
+                        matmul_threaded!(part_r, temp_window, rightvecs[j][l][r], prec=matmul_prec)
+                        Arblib.window_clear!(temp_window)
                         Arblib.get_mid!(part_r, part_r)
                         for s=1:r
-                            matmul_threaded!(bilinear_pairings_Xinv[j][l][s,r],leftvecs[j][l][s],part_r[(s-1)*delta+1:s*delta,:],prec=matmul_prec)#,opt=4)
+                            Arblib.window_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
+                            matmul_threaded!(bilinear_pairings_Xinv[j][l][s,r],leftvecs[j][l][s],temp_window,prec=matmul_prec)#,opt=4)
+                            Arblib.window_clear!(temp_window)
                             Arblib.get_mid!(bilinear_pairings_Xinv[j][l][s,r],bilinear_pairings_Xinv[j][l][s,r])
                         end
                     end
@@ -1126,10 +1136,20 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
 
                         #apply the matrix multiplications V_l * Z * V_r
                         Threads.@threads for i=1:used_threads
+                            #window matrices
+                            w1 = ArbRefMatrix(0,0)
+                            w2 = ArbRefMatrix(0,0)
+                            Arblib.window_init!(w1, Z.blocks[j].blocks[l], (r-1)*delta, (s-1)*delta, r*delta, s*delta)
+                            Arblib.window_init!(w2,vecs_right[j][l][r,s], 0, indices[i], size(vecs_right[j][l][r,s],1), indices[i+1])
                             ZV = ArbRefMatrix(delta,indices[i+1]-indices[i],prec=precision(Z))
                             # we can parallellize here over the samples (rows of vs_transpose)
-                            Arblib.approx_mul!(ZV,Z.blocks[j].blocks[l][(r-1)*delta+1:r*delta, (s-1)*delta+1:s*delta],vecs_right[j][l][r,s][:,indices[i]+1:indices[i+1]])
-                            Arblib.mul_entrywise!(ZV,ZV,vecs_left[j][l][r,s][:,indices[i]+1:indices[i+1]])
+                            Arblib.approx_mul!(ZV,w1,w2)
+                            Arblib.window_clear!(w1)
+                            Arblib.window_clear!(w2)
+
+                            Arblib.window_init!(w1, vecs_left[j][l][r,s], 0, indices[i], size(vecs_left[j][l][r,s],1), indices[i+1])
+                            Arblib.mul_entrywise!(ZV,ZV,w1)
+                            Arblib.window_clear!(w1)
                             Arblib.approx_mul!(result_parts[i],ones,ZV)
                         end
                         #Because we did the multiplications in this order we have row vectors to concatenate
