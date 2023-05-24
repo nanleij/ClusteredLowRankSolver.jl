@@ -665,13 +665,20 @@ end
 """Compute the dual residue d = c - <A_*, Y> - By"""
 function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks)
     cur_idx = 0
+    w = ArbRefMatrix(0,0)
     for j in eachindex(sdp.c)
-        d[cur_idx+1:cur_idx+size(sdp.c[j],1),1] = sdp.c[j]
+        Arblib.window_init!(w, d, cur_idx, 0,cur_idx+size(sdp.c[j],1), 1)
+        
+        Arblib.approx_mul!(w, sdp.B[j], y)
+        Arblib.neg!(w,w)
+        Arblib.add!(w,w,sdp.c[j])
+        Arblib.window_clear!(w)
+        # d[cur_idx+1:cur_idx+size(sdp.c[j],1),1] = sdp.c[j]
         cur_idx += size(sdp.c[j],1)
     end
 	# Maybe we can do this a bit more efficient, without copying sdp.B[j] into the matrix B
-    B::ArbRefMatrix = vcat(sdp.B...)
-    Arblib.sub!(d,d,Arblib.approx_mul!(similar(d),B,y))
+    # B::ArbRefMatrix = vcat(sdp.B...)
+    # Arblib.sub!(d,d,Arblib.approx_mul!(similar(d),B,y))
     Arblib.sub!(d,d,trace_A(sdp,Y,vecs_left,vecs_right,high_ranks))
     return d
 end
@@ -700,7 +707,7 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vec
     p_added = [similar(p) for j in eachindex(sdp.B)]
     Threads.@threads for j in threadinginfo.j_order
         j_idx = sum(size.(sdp.c[1:j-1],1))
-        Arblib.approx_mul!(p_added[j],transpose(sdp.B[j]), x[j_idx+1:j_idx+size(sdp.c[j],1),:])
+        approx_mul_transpose!(p_added[j],sdp.B[j], x[j_idx+1:j_idx+size(sdp.c[j],1),:])
     end
     for j in eachindex(p_added)
         Arblib.sub!(p,p,p_added[j])
@@ -791,7 +798,6 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
     # For every (s,p,rank) combination for this j,l,r we have an entry pointing towards the vector from leftvecs resp rightvecs.
     pointers_right = [[[Dict{Tuple{Int,Int,Int},Int}() for r=1:size(sdp.A[j][l],1)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     pointers_left = [[[Dict{Tuple{Int,Int,Int},Int}() for r=1:size(sdp.A[j][l],1)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
-
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
             high_ranks[j][l] = any(typeof(sdp.A[j][l][i][p]) != LowRankMat for i in eachindex(sdp.A[j][l]) for p in keys(sdp.A[j][l][i]))
@@ -1077,6 +1083,9 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 
     #compute Q = B^T L^-T L^-1 B
     time_Q = @elapsed begin
+        #options: 
+        # vcat(LinvB...) and transpose -> 2x size of LinvB extra (option: preallocate and reuse every iteration)
+        # per thread a copy of Q, Q_copy += LinvB[j]' * LinvB[j] -> 1x size of LinvB extra, 2* n_threads * size Q extra
         total_LinvB::ArbRefMatrix = vcat(LinvB...)
         matmul_threaded!(Q,transpose(total_LinvB),total_LinvB)
         Arblib.get_mid!(Q,Q)
@@ -1222,6 +1231,7 @@ end
 function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
     # initial_matrix is a BlockDiagonal matrix of BlockDiagonal matrices of ArbMatrices
     # We add the contributions to the (blocked) upper triangular, then symmetrize
+    Q = ArbRefMatrix(0,0,prec=precision(a))
     j_idx = 0
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
@@ -1237,35 +1247,40 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
             else              
                 delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
                 #initialize the scratch spaces
-                Q = ArbRefMatrix(delta,delta,prec=precision(a))
                 cur = Arb(1,prec=precision(a))
                 vec = ArbRefMatrix(delta,1,prec=precision(a))
-
+                
                 for r = 1:size(sdp.A[j][l],1)
                     for s = 1:r
+                        Arblib.window_init!(Q, initial_matrix.blocks[j].blocks[l],(r-1)*delta, (s-1)*delta, r*delta, s*delta)
                         # Approach: sum_i a_i A_i can be written as V_i D V_i^T, with D diagonal (λ_i,rnk * a_i)
                         # Initialize the matrices, both V^T and VD
-                        vecs_left_transpose = transpose(vecs_left[j][l][r,s])
+                        # vecs_left_transpose = transpose(vecs_left[j][l][r,s])
 
                         # Now we compute V_r D
                         # Scratch space:
                         # Note that vecs_right has the same number of vectors as vecs_left, of the same size, because A[j][l][r,s] has the same number of leftevs as rightevs
-                        vecs_right = similar(vecs_left[j][l][r,s]) #V_rD. So we multiply every vector (column) by the corresponding eigenvalue
+                        vecs_right = ArbRefMatrix(size(vecs_left[j][l][r,s],2), size(vecs_left[j][l][r,s],1),prec=precision(a)) #V_rD. So we multiply every vector (column) by the corresponding eigenvalue
                         idx = 1
                         for p in keys(sdp.A[j][l][r,s])
                             for rnk in eachindex(sdp.A[j][l][r,s][p].eigenvalues)
                                 Arblib.mul!(cur,a[j_idx+p,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
                                 Arblib.mul!(vec, sdp.A[j][l][r,s][p].rightevs[rnk],cur)
-                                vecs_right[:,idx] = vec
+                                Arblib.window_init!(w, vecs_right, idx-1, 0,idx, delta)
+                                Arblib.transpose!(w, vec)
+                                Arblib.window_clear!(w)
+                                # vecs_right[:,idx] = vec
                                 idx+=1
                             end
                         end
                         Arblib.get_mid!(vecs_right,vecs_right)
 
                         # calculate V_rD * V_l^T
-                        matmul_threaded!(Q,vecs_right,vecs_left_transpose)
+                        matmul_threaded!(Q,vecs_left[j][l][r,s], vecs_right)
+                        Arblib.transpose!(Q,Q)
                         Arblib.get_mid!(Q,Q)
-                        initial_matrix.blocks[j].blocks[l][(r-1)*delta+1:r*delta,(s-1)*delta+1:s*delta] = Q
+                        # initial_matrix.blocks[j].blocks[l][(r-1)*delta+1:r*delta,(s-1)*delta+1:s*delta] = Q
+                        Arblib.window_clear!(Q)
                     end
                 end
             end
@@ -1351,7 +1366,7 @@ function compute_search_direction!(
                 0,
             )
             Arblib.get_mid!(temp_x[j],temp_x[j])
-            Arblib.approx_mul!(temp_y[j], transpose(LinvB[j]), temp_x[j])
+            approx_mul_transpose!(temp_y[j], LinvB[j], temp_x[j])
         end
 
         # dy = rhs_y - ∑_j temp_y[j]
