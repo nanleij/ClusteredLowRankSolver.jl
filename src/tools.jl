@@ -126,11 +126,12 @@ function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
     return x[unique_idx]
 end
 
-function approx_mul_transpose(C::T, AT::T, B::T; prec=precision(C)) where T<:Union{ArbMatrix,ArbRefMatrix}
+function approx_mul_transpose!(C::T, AT::T, B::T; prec=precision(C)) where T<:Union{ArbMatrix,ArbRefMatrix}
     # C = AT^T * B = (B^T * AT)^T
     #assume that AT is much larger than B (e.g., matrix * vector)
     BT = T(size(B,2), size(B,1), prec=precision(B))
-    res = T(size(AT, 2), size(B,2), prec=prec)
+    res = T(size(C, 2), size(C,1), prec=prec)
+    Arblib.transpose!(BT, B)
     Arblib.approx_mul!(res,BT,AT)
     Arblib.transpose!(C, res)
 end

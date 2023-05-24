@@ -707,6 +707,7 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vec
     p_added = [similar(p) for j in eachindex(sdp.B)]
     Threads.@threads for j in threadinginfo.j_order
         j_idx = sum(size.(sdp.c[1:j-1],1))
+        # Arblib.approx_mul!(p_added[j], transpose(sdp.B[j]), x[j_idx+1:j_idx+size(sdp.c[j],1),:])
         approx_mul_transpose!(p_added[j],sdp.B[j], x[j_idx+1:j_idx+size(sdp.c[j],1),:])
     end
     for j in eachindex(p_added)
@@ -1232,6 +1233,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
     # initial_matrix is a BlockDiagonal matrix of BlockDiagonal matrices of ArbMatrices
     # We add the contributions to the (blocked) upper triangular, then symmetrize
     Q = ArbRefMatrix(0,0,prec=precision(a))
+    w = ArbRefMatrix(0,0,prec=precision(a))
     j_idx = 0
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
@@ -1366,6 +1368,7 @@ function compute_search_direction!(
                 0,
             )
             Arblib.get_mid!(temp_x[j],temp_x[j])
+            # Arblib.approx_mul!(temp_y[j], transpose(LinvB[j]), temp_x[j])
             approx_mul_transpose!(temp_y[j], LinvB[j], temp_x[j])
         end
 
