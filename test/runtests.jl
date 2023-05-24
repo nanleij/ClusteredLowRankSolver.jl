@@ -23,14 +23,14 @@ using Test
 
         include("../examples/SpherePacking.jl")
         using .SpherePacking
-        _, sol, _, _ = cohnelkies(8, 25)
+        _, sol, _, _ = cohnelkies(8, 15, prec=256)
         @test sol.dual_objective ≈ BigFloat(pi)^4/384 atol=1e-4 #exact in the limit of d-> ∞, but for this d the error still is relatively large
-        _, sol, _, _ = Nsphere_packing(8, 15, [1//2,1//2],2)
+        _, sol, _, _ = Nsphere_packing(8, 15, [1//2,1//2],2, prec=256)
         @test sol.dual_objective ≈ BigFloat(pi)^4/384 atol=1e-4
 
         include("../examples/ThreePointBound.jl")
         using .ThreePointBound
-        _, sol, _, _ = three_point_spherical_cap(3, 6, 1//2, 256)
+        _, sol, _, _ = three_point_spherical_cap(3, 6, 1//2, 256, omega_d = 10^3, omega_p=10^3)
         @test sol.dual_objective ≈ 12.718780 atol=1e-5
     end
 

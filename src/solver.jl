@@ -241,8 +241,8 @@ function solvesdp(
     dY = similar(X)
     dx = similar(x)
     dy = similar(y)
-    bilinear_pairings_Y = [[[ArbRefMatrix(size(leftvecs_pairings[j][l][s],1),size(rightvecs_pairings[j][l][r],2),prec=matmul_prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
-    bilinear_pairings_Xinv = [[[ArbRefMatrix(size(leftvecs_pairings[j][l][s],1),size(rightvecs_pairings[j][l][r],2),prec=matmul_prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
+    bilinear_pairings_Y = [[[ r > s ? ArbRefMatrix(0,0,prec=matmul_prec) : ArbRefMatrix(size(leftvecs_pairings[j][l][s],1),size(rightvecs_pairings[j][l][r],2),prec=matmul_prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
+    bilinear_pairings_Xinv = [[[r > s ? ArbRefMatrix(0,0,prec=matmul_prec) : ArbRefMatrix(size(leftvecs_pairings[j][l][s],1),size(rightvecs_pairings[j][l][r],2),prec=matmul_prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     LinvB = [
         ArbRefMatrix(size(sdp.c[j],1), size(sdp.b,1), prec = prec) for j in eachindex(sdp.A)
     ]
@@ -875,16 +875,14 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                 #for high_rank matrices we don't compute A_Y. We compute the contribution to S_{pq} by
                 #   dot(A[j][l][p], X^-1 * A[j][l][q] * Y)
                 # high rank matrices always have one subblock
-                Threads.@threads for p in collect(keys(sdp.A[j][l][1,1])) #Not sure if we should do this threaded or the matrix multiplications
-                    scratch = similar(X_inv.blocks[j].blocks[l])
-                    Arblib.solve_cho_precomp!(scratch, X_inv.blocks[j].blocks[l], sdp.A[j][l][1,1][p])
-                    Arblib.mul!(scratch, scratch, Y.blocks[j].blocks[l])
-                    for q in keys(sdp.A[j][l][1,1])
-                        # We only do the upper triangular part here, so q >= p
-                        if q<p
-                            continue
-                        end
-                        Arblib.add!(S[j][p,q],S[j][p,q], dot(scratch, sdp.A[j][l][1,1][q]))
+                for p in keys(sdp.A[j][l][1,1]) #Not sure if we should do this threaded or the matrix multiplications
+                    # scratch = similar(X_inv.blocks[j].blocks[l])
+                    Arblib.solve_cho_precomp!(tempX.blocks[j].blocks[l], X_inv.blocks[j].blocks[l], sdp.A[j][l][1,1][p])
+                    matmul_threaded!(tempX.blocks[j].blocks[l], tempX.blocks[j].blocks[l], Y.blocks[j].blocks[l], prec=matmul_prec)
+                    # We only do the upper triangular part here, so q >= p
+                    qs = [q for q in keys(sdp.A[j][l][1,1]) if q >= p]
+                    Threads.@threads for q in qs
+                        Arblib.add!(S[j][p,q],S[j][p,q], dot(tempX.blocks[j].blocks[l], sdp.A[j][l][1,1][q]))
                     end
                 end
             else # low rank case
@@ -932,13 +930,14 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                     end
                 end
 
+                #TODO: check if this goes right when r != s and A[r,s] is not symmetric (but A[r,s] = A[s,r]) 
                 # Set the other r,s blocks, being the transpose of the s,r blocks
-                for r=1:size(sdp.A[j][l],1)
-                    for s=1:r-1 # we only have to do the blocks up to (not including) the diagonal
-                        Arblib.transpose!(bilinear_pairings_Y[j][l][r,s],bilinear_pairings_Y[j][l][s,r])
-                        Arblib.transpose!(bilinear_pairings_Xinv[j][l][r,s],bilinear_pairings_Xinv[j][l][s,r])
-                    end
-                end
+                # for r=1:size(sdp.A[j][l],1)
+                #     for s=1:r-1 # we only have to do the blocks up to (not including) the diagonal
+                #         Arblib.transpose!(bilinear_pairings_Y[j][l][r,s],bilinear_pairings_Y[j][l][s,r])
+                #         Arblib.transpose!(bilinear_pairings_Xinv[j][l][r,s],bilinear_pairings_Xinv[j][l][s,r])
+                #     end
+                # end
 
                 #We collect the parts v^T Y v, because we need them to compute <A_*, Y>
                 for r = 1:size(sdp.A[j][l],1)
@@ -948,7 +947,12 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                         for p in keys(sdp.A[j][l][r,s])
                             for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
                                 #This way we have A_Y in the order of [for p in Ps for i=1:rank]
-                                A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[j][l][r,s][pointers_left[j][l][r][(s,p,rnk)], pointers_right[j][l][s][(r,p,rnk)]]
+                                # here we take the transpose element, since we only have the bilinear pairings for r <= s
+                                if r != s
+                                    A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[j][l][s,r][pointers_right[j][l][s][(r,p,rnk)], pointers_left[j][l][r][(s,p,rnk)]]
+                                else
+                                    A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[j][l][r,s][pointers_left[j][l][r][(s,p,rnk)], pointers_right[j][l][s][(r,p,rnk)]]
+                                end
                                 idx+=1
                             end
                         end
@@ -974,16 +978,36 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                                         end
                                         for rnk1 = 1:length(sdp.A[j][l][r1,s1][p].eigenvalues)
                                             for rnk2 = 1:length(sdp.A[j][l][r2,s2][q].eigenvalues)
+                                                #NOTE: we only have the bilinear pairings for r <= s. In the other case, we need to take the transpose element
                                                 #S[j][p,q] += λ_p * λ_q * bilinearX * bilinearY.
                                                 # The two comparisons do not add much to the time, but save 50% when both eigenvalues are 1.
                                                 # Also, in general it is easy to get 1, just multiply one of the vectors by the eigenvalue. But that might give more unique eigenvectors
                                                 if sdp.A[j][l][r1,s1][p].eigenvalues[rnk1] != sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] || sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] != 1
-                                                    Arblib.mul!(tot,sdp.A[j][l][r1,s1][p].eigenvalues[rnk1],
-                                                        sdp.A[j][l][r2,s2][q].eigenvalues[rnk2])
-                                                    Arblib.mul!(tot,tot,bilinear_pairings_Xinv[j][l][s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]])
-                                                    Arblib.addmul!(S[j][p,q],tot,bilinear_pairings_Y[j][l][s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
+                                                    Arblib.mul!(tot,sdp.A[j][l][r1,s1][p].eigenvalues[rnk1], sdp.A[j][l][r2,s2][q].eigenvalues[rnk2])
+                                                    if s1 <= r2 # we only have bilinearpairing[r,s] for r <= s (here r = s1, s = r2)
+                                                        Arblib.mul!(tot,tot,bilinear_pairings_Xinv[j][l][s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]])
+                                                    else
+                                                        Arblib.mul!(tot,tot,bilinear_pairings_Xinv[j][l][r2, s1][pointers_right[j][l][r2][(s2,q,rnk2)], pointers_left[j][l][s1][(r1,p,rnk1)]])
+                                                    end
+                                                    if s2 <= r1
+                                                        Arblib.addmul!(S[j][p,q],tot,bilinear_pairings_Y[j][l][s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
+                                                    else
+                                                        Arblib.addmul!(S[j][p,q],tot,bilinear_pairings_Y[j][l][r1,s2][pointers_right[j][l][r1][(s1,p,rnk1)], pointers_left[j][l][s2][(r2,q,rnk2)]])
+                                                    end
                                                 else #both eigenvalues are 1, so we don't have to multiply by them
-                                                    Arblib.addmul!(S[j][p,q],bilinear_pairings_Xinv[j][l][s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]],bilinear_pairings_Y[j][l][s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
+                                                    a1 = pointers_left[j][l][s1][(r1,p,rnk1)]
+                                                    a2 = pointers_right[j][l][r2][(s2,q,rnk2)]
+                                                    i1,i2 = s1, r2
+                                                    b1 = pointers_left[j][l][s2][(r2,q,rnk2)]
+                                                    b2 = pointers_right[j][l][r1][(s1,p,rnk1)]
+                                                    j1,j2 = s2, r1
+                                                    if s1 > r2
+                                                        a1,a2 ,i1,i2 = a2,a1,i2,i1
+                                                    end
+                                                    if s2 > r1
+                                                        b1,b2,j1,j2 = b2,b1,j2,j1
+                                                    end
+                                                    Arblib.addmul!(S[j][p,q],bilinear_pairings_Xinv[j][l][i1,i2][a1,a2],bilinear_pairings_Y[j][l][j1,j2][b1,b2])
                                                 end
                                             end
                                         end

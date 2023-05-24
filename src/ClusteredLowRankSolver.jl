@@ -1,12 +1,11 @@
 module ClusteredLowRankSolver
 
 using AbstractAlgebra, IterTools, LinearAlgebra
-# using ApproximateFekete
 using Printf, Arblib, BlockDiagonals
 using KrylovKit
 
-export LowRankMat, LowRankMatPol, Block, Constraint, Objective,	 LowRankPolProblem, ClusteredLowRankSDP, solvesdp, approximatefekete,SampledMPolyElem,optimal
-export solvesdp, convert_to_prec, SolverFailure
+export LowRankMat, LowRankMatPol, Block, Constraint, Objective,	 LowRankPolProblem, ClusteredLowRankSDP, solvesdp, approximatefekete, SampledMPolyElem, optimal
+export convert_to_prec, SolverFailure
 
 import LinearAlgebra: dot, transpose
 import Base: ==
