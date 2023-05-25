@@ -102,6 +102,7 @@ The second constraint seems simpler since it does not involve polynomials. Howev
     # We have one sample, which is arbitrary
     constr2 = Constraint(-1, psd_dict2, free_dict2, [[0]])
 ```
+Note that we again use a general matrix for the variables ``a_k``. The use of low-rank matrices and general matrices should be consistent per variable.
 Now we can define the `LowRankPolProblem` and convert it to a `ClusteredLowRankSDP`. When converting, we can choose to model some of the PSD variables as free variables, which can be beneficial if the corresponding constraint matrices are of relatively high rank or if they couple a lot of polynomial constraints. In this case, we just illustrate the option by modelling ``a_0`` as free variable. This adds the constraint ``X = a_0`` with a positive semidefinite variable ``X`` (in this case a ``1 \times 1`` matrix), and replaces ``a_0`` by a free variable in every constraint.
 ```julia
     # The first argument is false because we minimize:
