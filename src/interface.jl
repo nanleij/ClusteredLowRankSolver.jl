@@ -370,7 +370,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                 for j=1:i
                     if i==j
                         push!(sos.constraints,Constraint(0,
-                            Dict(Block(l,i,j)=> [1;;]), # matrix variable
+                            Dict(Block(l,i,j)=> hcat([1])), # matrix variable
                             Dict((l,i,j)=>-1), # free variable
                             ))
                     else # i != j, so both sides get 1/2
@@ -379,7 +379,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                         #     Dict((l,i,j)=>-2),
                         # ))
                         push!(sos.constraints,Constraint(0,
-                            Dict(Block(l,i,j) => [1;;], Block(l,j,i) => [1;;]),
+                            Dict(Block(l,i,j) => hcat([1]), Block(l,j,i) => hcat([1])),
                             Dict((l,i,j)=>-2),
                         ))
                     end
