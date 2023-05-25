@@ -186,12 +186,16 @@ function solvesdp(
         #we don't check for PSDness, but that's implicitely done in the algorithm
     end
 
+    #separate the high-rank blocks from the low-rank ones.
     # Precompute the matrices for the bilinear pairings and the matrices used for ∑_i x_i A_i and <A^j_*, Y>
-    leftvecs_pairings, rightvecs_pairings, pointers_left, pointers_right = precompute_matrices_bilinear_pairings(sdp,subblocksizes)
+    leftvecs_pairings, rightvecs_pairings, pointers_left, pointers_right,high_ranks = precompute_matrices_bilinear_pairings(sdp,subblocksizes)
     vecs_left = [[[ArbRefMatrix(0,0) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     vecs_right = [[[ArbRefMatrix(0,0) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
+            if high_ranks[j][l]
+               continue
+            end 
             delta = div(size(Y.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
             for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)
                 cur_right = hcat([sdp.A[j][l][r,s][p].rightevs[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].rightevs)]...)
@@ -249,7 +253,7 @@ function solvesdp(
     d_obj = compute_dual_objective(sdp, y, Y)
     dual_gap = compute_duality_gap(sdp, x, y, Y)
     time_res = @elapsed begin
-        compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right)
+        compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
     end
     primal_error = compute_primal_error(P, p)
     dual_error = compute_dual_error(d)
@@ -264,7 +268,7 @@ function solvesdp(
     allocs = zeros(6)
     timings = zeros(17)
     time_start = time()
-    try #catch InterruptExceptions & SolverFailures (so that we still return something)
+    # try #catch InterruptExceptions & SolverFailures (so that we still return something)
     @time while (
         !terminate(
             dual_gap,
@@ -307,6 +311,7 @@ function solvesdp(
                     X_inv.blocks[j].blocks[l],
                 ) #ignore the error bounds. Most of the error bounds will be 0 due to the use of approx_cholesky already
                 if status == 0
+                    @show j,l
                     throw(SolverFailure(
                         "The cholesky decomposition of X was not computed correctly. Try again with higher precision",
                     ))
@@ -320,7 +325,7 @@ function solvesdp(
         allocs[1] += @allocated begin
             time_decomp = @elapsed begin
                 time_schur, time_cholS, time_LinvB, time_Q, time_cholQ =
-                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right, prec=matmul_prec)
+                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right,high_ranks, prec=matmul_prec)
             end
         end
 
@@ -328,7 +333,7 @@ function solvesdp(
         # Compute the residuals
         allocs[2] += @allocated begin
             time_res = @elapsed begin
-                compute_residuals!(sdp, x, X, y, A_Y, P, p, d, threadinginfo,vecs_left,vecs_right)
+                compute_residuals!(sdp, x, X, y, (Y, A_Y), P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
             end
         end
 
@@ -337,7 +342,7 @@ function solvesdp(
         allocs[3] += @allocated begin
             time_predictor_dir = @elapsed begin
                 times_predictor_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
             end
         end
 
@@ -368,7 +373,7 @@ function solvesdp(
         allocs[4] += @allocated begin
             time_corrector_dir = @elapsed begin
                 times_corrector_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, threadinginfo, S, LinvB,Q, vecs_left, vecs_right,high_ranks)
             end
         end
 
@@ -476,14 +481,14 @@ function solvesdp(
 
         iter += 1
     end
-    catch e
-        println("A(n) $(typeof(e)) occurred.")
-        if hasfield(typeof(e),:msg)
-            println(e.msg)
-        end
-        println("We return the current solution and optimality status.")
-        error_code[1] = 1 #general errors
-    end #of try/catch
+    # catch e
+    #     println("A(n) $(typeof(e)) occurred.")
+    #     if hasfield(typeof(e),:msg)
+    #         println(e.msg)
+    #     end
+    #     println("We return the current solution and optimality status.")
+    #     error_code[1] = 1 #general errors
+    # end #of try/catch
     time_total = time() - time_start #this may include compile time
 	results = CLRSResults(x, X, y, Y, compute_primal_objective(sdp, x), compute_dual_objective(sdp,y, Y), sdp.matrix_coeff_names, sdp.free_coeff_names)
 
@@ -656,7 +661,7 @@ function dot_c(sdp, x)
 end
 
 """Compute the dual residue d = c - <A_*, Y> - By"""
-function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right)
+function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks)
     cur_idx = 0
     for j in eachindex(sdp.c)
         d[cur_idx+1:cur_idx+size(sdp.c[j],1),1] = sdp.c[j]
@@ -665,14 +670,14 @@ function calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right)
 	# Maybe we can do this a bit more efficient, without copying sdp.B[j] into the matrix B
     B::ArbRefMatrix = vcat(sdp.B...)
     Arblib.sub!(d,d,Arblib.approx_mul!(similar(d),B,y))
-    Arblib.sub!(d,d,trace_A(sdp,Y,vecs_left,vecs_right))
+    Arblib.sub!(d,d,trace_A(sdp,Y,vecs_left,vecs_right,high_ranks))
     return d
 end
 
 """Compute the residuals P,p and d."""
-function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vecs_right)
+function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vecs_right,high_ranks)
     # P = ∑_i x_i A_i - X - C, (+ C if we are minimizing)
-    compute_weighted_A!(P, sdp, x,vecs_left)
+    compute_weighted_A!(P, sdp, x,vecs_left,high_ranks)
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.sub!(P.blocks[j].blocks[l],P.blocks[j].blocks[l],X.blocks[j].blocks[l])
         if sdp.maximize  # normal
@@ -684,7 +689,7 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,vecs_left,vec
     end
 
     # d = c - <A_*, Y> - By
-    calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right)
+    calculate_res_d!(sdp,y,Y,d,vecs_left,vecs_right,high_ranks)
     Arblib.get_mid!(d, d)
 
     # p = b - B^T x (-b if we are minimizing)
@@ -783,7 +788,7 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
     # We try to remove duplicates, because that is the main difference between the old and new format for things like binary sphere packing.
     leftvecs = [[ArbRefMatrix[] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     rightvecs = [[ArbRefMatrix[] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
-
+    high_ranks = [Bool[false for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     # Indexing: j,l,r
     # For every (s,p,rank) combination for this j,l,r we have an entry pointing towards the vector from leftvecs resp rightvecs.
     pointers_right = [[[Dict{Tuple{Int,Int,Int},Int}() for r=1:size(sdp.A[j][l],1)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
@@ -791,11 +796,18 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
 
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
+            high_ranks[j][l] = any(typeof(sdp.A[j][l][i][p]) != LowRankMat for i in eachindex(sdp.A[j][l]) for p in keys(sdp.A[j][l][i]))
             for r=1:size(sdp.A[j][l],1)
+                if high_ranks[j][l] #for high rank matrices we don't have left/right vecs
+                    push!(rightvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
+                    push!(leftvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
+                    pointers_right[j][l][r] = Dict{Tuple{Int,Int,Int},Int}()
+                    pointers_left[j][l][r] = Dict{Tuple{Int,Int,Int},Int}()
+                    continue
+                end
                 # NOTE: this assumes that sdp.A[j][l][r,s][p] = transpose(sdp.A[j][l][s,r][p]). We need to make sure that that is the case.
                 # This is the only place where we really need it. (and where we use these matrices)
                 # vectors for this combination of j,l,r
-
                 right = [sdp.A[j][l][r,s][p].rightevs[rnk] for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]
                 if length(right) == 0
                     push!(rightvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
@@ -835,11 +847,11 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
             end
         end
     end
-    return leftvecs,rightvecs,pointers_left,pointers_right
+    return leftvecs,rightvecs,pointers_left,pointers_right, high_ranks
 end
 
 """Compute S, integrated with the precomputing of the bilinear pairings"""
-function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,pointers_left,pointers_right;matmul_prec=precision(S[1]))
+function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,pointers_left,pointers_right,high_ranks;matmul_prec=precision(S[1]))
     #NOTE: somewhere in this function, the memory is allocated but not always released. Goes from 13% before to 20% just after this function.
     #   Apparently, calling 'ccall(:malloc_trim, Cvoid, (Cint,), 0)' could free (some) more memory
     prec = precision(Y)
@@ -857,103 +869,124 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
     for j in eachindex(sdp.A)
         Arblib.zero!(S[j])
         for l in eachindex(sdp.A[j])
-
             delta = div(size(Y.blocks[j].blocks[l],1), size(sdp.A[j][l],1)) #NOTE: we assume that all blocks are of the same size
-            # We basically have three options for using the cholesky factors
-            # 1) form the full matrix corresponding to rightvecs and left vecs and do triangular solves and matrix multiplications.
-            # Con: due to the block structure we can do it faster
-            # pro: relatively easy
-            # 2) Use the block structure to do smaller triangular solves/matmuls (i.e., similar to how we do it now)
-            # con: more difficult to implement due to 'recursion' for the non-diagonal blocks
-            # pro: we do have a block diagonal structure, so it'll save some time (probably)
-            # 3) Explicitely invert X using the cholesky factor, and use that to do it like Y. Since it doesn't really seem to matter which method we use, we'll do this. Because we do a matrix multiplication instead of a two
-            # We use method 3, since it doesn't seem to have much effect on the precision we need.
-            X_inv_block = similar(X_inv.blocks[j].blocks[l])
-            Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
-            #if the matrices are not exact, Arblib.approx_mul! will copy the midpoints to a temporary matrix
-            Arblib.get_mid!(X_inv_block,X_inv_block)
 
-            if size(sdp.A[j][l],1) == 1 #only one block, so we can do it slightly more memory efficient (avoid copying by indexing)
-                part = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][1],2), prec=matmul_prec)
-                matmul_threaded!(part,Y.blocks[j].blocks[l], rightvecs[j][l][1], prec=matmul_prec)
-                matmul_threaded!(bilinear_pairings_Y[j][l][1,1], leftvecs[j][l][1], part,prec=matmul_prec)
-                Arblib.get_mid!(bilinear_pairings_Y[j][l][1,1], bilinear_pairings_Y[j][l][1,1])
-
-                # surprisingly, it doesn't matter a lot whether this is done with Xinv or with Xchol (i.e. explicite inverse or triangular solves from cholesky)
-                # Maybe it matters more when the conditioning of the vandermonde matrix is worse?
-                matmul_threaded!(part, X_inv_block,rightvecs[j][l][1], prec=matmul_prec)
-                matmul_threaded!(bilinear_pairings_Xinv[j][l][1,1], leftvecs[j][l][1], part, prec=matmul_prec)
-                Arblib.get_mid!(bilinear_pairings_Xinv[j][l][1,1], bilinear_pairings_Xinv[j][l][1,1])
-            else #more blocks
-                for r=1:size(sdp.A[j][l],2)
-                    part_r = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][r],2), prec=matmul_prec)
-                    matmul_threaded!(part_r, Y.blocks[j].blocks[l][:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
-                    Arblib.get_mid!(part_r, part_r)
-                    for s=1:r
-                        matmul_threaded!(bilinear_pairings_Y[j][l][s,r], leftvecs[j][l][s], part_r[(s-1)*delta+1:s*delta,:], prec=matmul_prec)#,opt=4)
-                        Arblib.get_mid!(bilinear_pairings_Y[j][l][s,r], bilinear_pairings_Y[j][l][s,r])
-                    end
-                    matmul_threaded!(part_r, X_inv_block[:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
-                    Arblib.get_mid!(part_r, part_r)
-                    for s=1:r
-                        matmul_threaded!(bilinear_pairings_Xinv[j][l][s,r],leftvecs[j][l][s],part_r[(s-1)*delta+1:s*delta,:],prec=matmul_prec)#,opt=4)
-                        Arblib.get_mid!(bilinear_pairings_Xinv[j][l][s,r],bilinear_pairings_Xinv[j][l][s,r])
+            #Here we make a distinction between low- and high-rank blocks 
+            # For high-rank blocks we do not use the sparsity (if existing) at first. This might be optimized later, using the formula F*(k) of Fujisawa et al. (1997)
+            if high_ranks[j][l]
+                #for high_rank matrices we don't compute A_Y. We compute the contribution to S_{pq} by
+                #   dot(A[j][l][p], X^-1 * A[j][l][q] * Y)
+                # high rank matrices always have one subblock
+                Threads.@threads for p in collect(keys(sdp.A[j][l][1,1])) #Not sure if we should do this threaded or the matrix multiplications
+                    scratch = similar(X_inv.blocks[j].blocks[l])
+                    Arblib.solve_cho_precomp!(scratch, X_inv.blocks[j].blocks[l], sdp.A[j][l][1,1][p])
+                    Arblib.mul!(scratch, scratch, Y.blocks[j].blocks[l])
+                    for q in keys(sdp.A[j][l][1,1])
+                        # We only do the upper triangular part here, so q >= p
+                        if q<p
+                            continue
+                        end
+                        Arblib.add!(S[j][p,q],S[j][p,q], dot(scratch, sdp.A[j][l][1,1][q]))
                     end
                 end
-            end
+            else # low rank case
 
-            # Set the other r,s blocks, being the transpose of the s,r blocks
-            for r=1:size(sdp.A[j][l],1)
-                for s=1:r-1 # we only have to do the blocks up to (not including) the diagonal
-                    Arblib.transpose!(bilinear_pairings_Y[j][l][r,s],bilinear_pairings_Y[j][l][s,r])
-                    Arblib.transpose!(bilinear_pairings_Xinv[j][l][r,s],bilinear_pairings_Xinv[j][l][s,r])
-                end
-            end
+                # We basically have three options for using the cholesky factors
+                # 1) form the full matrix corresponding to rightvecs and left vecs and do triangular solves and matrix multiplications.
+                # Con: due to the block structure we can do it faster
+                # pro: relatively easy
+                # 2) Use the block structure to do smaller triangular solves/matmuls (i.e., similar to how we do it now)
+                # con: more difficult to implement due to 'recursion' for the non-diagonal blocks
+                # pro: we do have a block diagonal structure, so it'll save some time (probably)
+                # 3) Explicitely invert X using the cholesky factor, and use that to do it like Y. Since it doesn't really seem to matter which method we use, we'll do this. Because we do a matrix multiplication instead of a two
+                # We use method 3, since it doesn't seem to have much effect on the precision we need.
+                X_inv_block = similar(X_inv.blocks[j].blocks[l])
+                Arblib.inv_cho_precomp!(X_inv_block,X_inv.blocks[j].blocks[l])
+                #if the matrices are not exact, Arblib.approx_mul! will copy the midpoints to a temporary matrix
+                Arblib.get_mid!(X_inv_block,X_inv_block)
 
-            #We collect the parts v^T Y v, because we need them to compute <A_*, Y>
-            for r = 1:size(sdp.A[j][l],1)
-                for s = 1:r
-                    Arblib.zero!(A_Y[j][l][r,s])
-                    idx = 1
-                    for p in keys(sdp.A[j][l][r,s])
-                        for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
-                            #This way we have A_Y in the order of [for p in Ps for i=1:rank]
-                            A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[j][l][r,s][pointers_left[j][l][r][(s,p,rnk)], pointers_right[j][l][s][(r,p,rnk)]]
-                            idx+=1
+                if size(sdp.A[j][l],1) == 1 #only one block, so we can do it slightly more memory efficient (avoid copying by indexing)
+                    part = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][1],2), prec=matmul_prec)
+                    matmul_threaded!(part,Y.blocks[j].blocks[l], rightvecs[j][l][1], prec=matmul_prec)
+                    matmul_threaded!(bilinear_pairings_Y[j][l][1,1], leftvecs[j][l][1], part,prec=matmul_prec)
+                    Arblib.get_mid!(bilinear_pairings_Y[j][l][1,1], bilinear_pairings_Y[j][l][1,1])
+
+                    # surprisingly, it doesn't matter a lot whether this is done with Xinv or with Xchol (i.e. explicite inverse or triangular solves from cholesky)
+                    # Maybe it matters more when the conditioning of the vandermonde matrix is worse?
+                    matmul_threaded!(part, X_inv_block,rightvecs[j][l][1], prec=matmul_prec)
+                    matmul_threaded!(bilinear_pairings_Xinv[j][l][1,1], leftvecs[j][l][1], part, prec=matmul_prec)
+                    Arblib.get_mid!(bilinear_pairings_Xinv[j][l][1,1], bilinear_pairings_Xinv[j][l][1,1])
+                else #more blocks
+                    for r=1:size(sdp.A[j][l],2)
+                        part_r = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][r],2), prec=matmul_prec)
+                        matmul_threaded!(part_r, Y.blocks[j].blocks[l][:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
+                        Arblib.get_mid!(part_r, part_r)
+                        for s=1:r
+                            matmul_threaded!(bilinear_pairings_Y[j][l][s,r], leftvecs[j][l][s], part_r[(s-1)*delta+1:s*delta,:], prec=matmul_prec)#,opt=4)
+                            Arblib.get_mid!(bilinear_pairings_Y[j][l][s,r], bilinear_pairings_Y[j][l][s,r])
+                        end
+                        matmul_threaded!(part_r, X_inv_block[:,(r-1)*delta+1:r*delta], rightvecs[j][l][r], prec=matmul_prec)
+                        Arblib.get_mid!(part_r, part_r)
+                        for s=1:r
+                            matmul_threaded!(bilinear_pairings_Xinv[j][l][s,r],leftvecs[j][l][s],part_r[(s-1)*delta+1:s*delta,:],prec=matmul_prec)#,opt=4)
+                            Arblib.get_mid!(bilinear_pairings_Xinv[j][l][s,r],bilinear_pairings_Xinv[j][l][s,r])
                         end
                     end
                 end
-            end
 
-            # We compute the contribution of this l to S[j]
-            # The elements of S are per p,q, and then we need to sum over r,s,rnk  for both p,q
-            # So we can loop over r1,s1, parallellize over p, loop over rank(p) r2,s2,q,rank(q)
-            # and then add the contribution to S[j][p,q]
-            for r1=1:size(sdp.A[j][l],1)
-                for s1=1:size(sdp.A[j][l],2)
-                    # We need collect to combine keys(Dict()) with @threads, since @threads need an ordering and the keys are unordered
-                    Threads.@threads for p in collect(keys(sdp.A[j][l][r1,s1]))
-                        #NOTE: for high p, we do less q. So this may not be very well balanced. the order through keys may be kind of random, so this may be a better ordering than sorted
-                        tot = Arb(prec=prec)
-                        for r2=1:size(sdp.A[j][l],1)
-                            for s2=1:size(sdp.A[j][l],2)
-                                for q in keys(sdp.A[j][l][r2,s2])
-                                    # We can do only the upper triangular part here, so q >= p
-                                    if q<p
-                                        continue
-                                    end
-                                    for rnk1 = 1:length(sdp.A[j][l][r1,s1][p].eigenvalues)
-                                        for rnk2 = 1:length(sdp.A[j][l][r2,s2][q].eigenvalues)
-                                            #S[j][p,q] += λ_p * λ_q * bilinearX * bilinearY.
-                                            # The two comparisons do not add much to the time, but save 50% when both eigenvalues are 1.
-                                            # Also, in general it is easy to get 1, just multiply one of the vectors by the eigenvalue. But that might give more unique eigenvectors
-                                            if sdp.A[j][l][r1,s1][p].eigenvalues[rnk1] != sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] || sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] != 1
-                                                Arblib.mul!(tot,sdp.A[j][l][r1,s1][p].eigenvalues[rnk1],
-                                                    sdp.A[j][l][r2,s2][q].eigenvalues[rnk2])
-                                                Arblib.mul!(tot,tot,bilinear_pairings_Xinv[j][l][s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]])
-                                                Arblib.addmul!(S[j][p,q],tot,bilinear_pairings_Y[j][l][s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
-                                            else #both eigenvalues are 1, so we don't have to multiply by them
-                                                Arblib.addmul!(S[j][p,q],bilinear_pairings_Xinv[j][l][s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]],bilinear_pairings_Y[j][l][s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
+                # Set the other r,s blocks, being the transpose of the s,r blocks
+                for r=1:size(sdp.A[j][l],1)
+                    for s=1:r-1 # we only have to do the blocks up to (not including) the diagonal
+                        Arblib.transpose!(bilinear_pairings_Y[j][l][r,s],bilinear_pairings_Y[j][l][s,r])
+                        Arblib.transpose!(bilinear_pairings_Xinv[j][l][r,s],bilinear_pairings_Xinv[j][l][s,r])
+                    end
+                end
+
+                #We collect the parts v^T Y v, because we need them to compute <A_*, Y>
+                for r = 1:size(sdp.A[j][l],1)
+                    for s = 1:r
+                        Arblib.zero!(A_Y[j][l][r,s])
+                        idx = 1
+                        for p in keys(sdp.A[j][l][r,s])
+                            for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
+                                #This way we have A_Y in the order of [for p in Ps for i=1:rank]
+                                A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[j][l][r,s][pointers_left[j][l][r][(s,p,rnk)], pointers_right[j][l][s][(r,p,rnk)]]
+                                idx+=1
+                            end
+                        end
+                    end
+                end
+
+                # We compute the contribution of this l to S[j]
+                # The elements of S are per p,q, and then we need to sum over r,s,rnk  for both p,q
+                # So we can loop over r1,s1, parallellize over p, loop over rank(p) r2,s2,q,rank(q)
+                # and then add the contribution to S[j][p,q]
+                for r1=1:size(sdp.A[j][l],1)
+                    for s1=1:size(sdp.A[j][l],2)
+                        # We need collect to combine keys(Dict()) with @threads, since @threads need an ordering and the keys are unordered
+                        Threads.@threads for p in collect(keys(sdp.A[j][l][r1,s1]))
+                            #NOTE: for high p, we do less q. So this may not be very well balanced. the order through keys may be kind of random, so this may be a better ordering than sorted
+                            tot = Arb(prec=prec)
+                            for r2=1:size(sdp.A[j][l],1)
+                                for s2=1:size(sdp.A[j][l],2)
+                                    for q in keys(sdp.A[j][l][r2,s2])
+                                        # We can do only the upper triangular part here, so q >= p
+                                        if q<p
+                                            continue
+                                        end
+                                        for rnk1 = 1:length(sdp.A[j][l][r1,s1][p].eigenvalues)
+                                            for rnk2 = 1:length(sdp.A[j][l][r2,s2][q].eigenvalues)
+                                                #S[j][p,q] += λ_p * λ_q * bilinearX * bilinearY.
+                                                # The two comparisons do not add much to the time, but save 50% when both eigenvalues are 1.
+                                                # Also, in general it is easy to get 1, just multiply one of the vectors by the eigenvalue. But that might give more unique eigenvectors
+                                                if sdp.A[j][l][r1,s1][p].eigenvalues[rnk1] != sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] || sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] != 1
+                                                    Arblib.mul!(tot,sdp.A[j][l][r1,s1][p].eigenvalues[rnk1],
+                                                        sdp.A[j][l][r2,s2][q].eigenvalues[rnk2])
+                                                    Arblib.mul!(tot,tot,bilinear_pairings_Xinv[j][l][s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]])
+                                                    Arblib.addmul!(S[j][p,q],tot,bilinear_pairings_Y[j][l][s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
+                                                else #both eigenvalues are 1, so we don't have to multiply by them
+                                                    Arblib.addmul!(S[j][p,q],bilinear_pairings_Xinv[j][l][s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]],bilinear_pairings_Y[j][l][s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
+                                                end
                                             end
                                         end
                                     end
@@ -963,7 +996,6 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                     end
                 end
             end
-
             # We call the gc when the memory usage gets too large. This is hardcoded, and the size we require might not be the best one.
             # When we use more than 5GB we call the GC. We could do it as percentage of the free or total memory.
             # That has the downside that it depends on the system state. 5GB hardcoded is also not a very good idea, especially for systems with a low amount of RAM
@@ -979,7 +1011,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
 end
 
 """Compute the decomposition of [S B; B^T 0]"""
-function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right; prec=precision(S[1]))
+function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks; prec=precision(S[1]))
     # 1) pre compute bilinear basis
     # 2) compute S
     # 3) compute cholesky decomposition S = LL^T
@@ -987,7 +1019,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 
     # 1,2) compute the bilinear pairings and S, integrated. (per j,l, compute first pairings then S[j] part)
     time_schur = @elapsed begin
-        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,pointers_right,matmul_prec=prec)
+        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks,matmul_prec=prec)
     end
 
     #3) cholesky decomposition of S
@@ -1035,56 +1067,65 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 end
 
 """Compute the vector <A_*,Z> = Tr(A_* Z) for one or all constraints"""
-function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right)
+function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
     #Assumption: Z is symmetric
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(Z))
+    Arblib.zero!(result)
     #result has one entry for each (j,p) tuple
     res = Arb(prec=precision(Z)) #we use this every iteration, but we set it to zero when needed
     j_idx = 0 #the offset of the constraint index depending on the cluster
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
+            #if A[j][l] is of high rank, we can just do the normal matrix inner product
             delta = div(size(Z.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
-            ones = ArbRefMatrix(1,delta,prec=precision(Z))
-            Arblib.ones!(ones)
-            for r=1:size(sdp.A[j][l],1)
-                for s=1:r
-                    # Approach of Simmons Duffin in SDPB: (Z[r,s] V_r) ∘ V_l (where ∘ is the entrywise (Hadamard) product, and V is the matrix of all vectors as columns
-                    # Then multiply with the vector of all ones to add the rows together for the dot products.
-                    # Then we need to add this to the block of result corresponding to j
-                    # However, we need to take care of different ranks. So we can calculate it like this, but we cannot put the result just in the vector because we have low rank instead of rank 1
+            if high_ranks[j][l]
+                #high rank matrices only have 1 subblock
+                for p in keys(sdp.A[j][l][1,1])
+                    Arblib.add!(result[j_idx + p], dot(Z.blocks[j].blocks[l], sdp.A[j][l][1,1][p]),result[j_idx + p])  
+                end
+            else
+                ones = ArbRefMatrix(1,delta,prec=precision(Z))
+                Arblib.ones!(ones)
+                for r=1:size(sdp.A[j][l],1)
+                    for s=1:r
+                        # Approach of Simmons Duffin in SDPB: (Z[r,s] V_r) ∘ V_l (where ∘ is the entrywise (Hadamard) product, and V is the matrix of all vectors as columns
+                        # Then multiply with the vector of all ones to add the rows together for the dot products.
+                        # Then we need to add this to the block of result corresponding to j
+                        # However, we need to take care of different ranks. So we can calculate it like this, but we cannot put the result just in the vector because we have low rank instead of rank 1
 
-                    #Here we make sure that we distribute all samples exactly once over the threads
-                    #Note that this is slightly different from normal threaded matrix multiplication because we also do an entrywise product
-                    used_threads = Threads.nthreads()
-                    min_thread_size = div(size(vecs_right[j][l][r,s],2), used_threads)
-                    # we add 1 to the first k threads such that all columns are being used
-                    thread_sizes = [min_thread_size + (used_threads*min_thread_size + i <= size(vecs_right[j][l][r,s],2) ? 1 : 0) for i=1:used_threads]
-                    indices = [0, cumsum(thread_sizes)...]
-                    result_parts = [ArbRefMatrix(1,indices[i+1]-indices[i],prec=precision(Z)) for i=1:used_threads]
+                        #Here we make sure that we distribute all samples exactly once over the threads
+                        #Note that this is slightly different from normal threaded matrix multiplication because we also do an entrywise product
+                        used_threads = Threads.nthreads()
+                        min_thread_size = div(size(vecs_right[j][l][r,s],2), used_threads)
+                        # we add 1 to the first k threads such that all columns are being used
+                        thread_sizes = [min_thread_size + (used_threads*min_thread_size + i <= size(vecs_right[j][l][r,s],2) ? 1 : 0) for i=1:used_threads]
+                        indices = [0, cumsum(thread_sizes)...]
+                        result_parts = [ArbRefMatrix(1,indices[i+1]-indices[i],prec=precision(Z)) for i=1:used_threads]
 
-                    #apply the matrix multiplications V_l * Z * V_r
-                    Threads.@threads for i=1:used_threads
-                        ZV = ArbRefMatrix(delta,indices[i+1]-indices[i],prec=precision(Z))
-                        # we can parallellize here over the samples (rows of vs_transpose)
-                        Arblib.approx_mul!(ZV,Z.blocks[j].blocks[l][(r-1)*delta+1:r*delta, (s-1)*delta+1:s*delta],vecs_right[j][l][r,s][:,indices[i]+1:indices[i+1]])
-                        Arblib.mul_entrywise!(ZV,ZV,vecs_left[j][l][r,s][:,indices[i]+1:indices[i+1]])
-                        Arblib.approx_mul!(result_parts[i],ones,ZV)
-                    end
-                    #Because we did the multiplications in this order we have row vectors to concatenate
-                    result_part = hcat(result_parts...)
-
-                    #now we add the (j,p,r,s,rank) parts to the (j,p) entries, multiplied by the eigenvalues
-                    idx = 1
-                    for p in keys(sdp.A[j][l][r,s])
-                        Arblib.zero!(res)
-                        for rnk=1:length(sdp.A[j][l][r,s][p].rightevs)
-                            Arblib.addmul!(res,sdp.A[j][l][r,s][p].eigenvalues[rnk],result_part[1,idx])
-                            idx+=1
+                        #apply the matrix multiplications V_l * Z * V_r
+                        Threads.@threads for i=1:used_threads
+                            ZV = ArbRefMatrix(delta,indices[i+1]-indices[i],prec=precision(Z))
+                            # we can parallellize here over the samples (rows of vs_transpose)
+                            Arblib.approx_mul!(ZV,Z.blocks[j].blocks[l][(r-1)*delta+1:r*delta, (s-1)*delta+1:s*delta],vecs_right[j][l][r,s][:,indices[i]+1:indices[i+1]])
+                            Arblib.mul_entrywise!(ZV,ZV,vecs_left[j][l][r,s][:,indices[i]+1:indices[i+1]])
+                            Arblib.approx_mul!(result_parts[i],ones,ZV)
                         end
-                        if r != s #We need to take both sides of the matrix into account
-                            Arblib.mul!(res,res,2)
+                        #Because we did the multiplications in this order we have row vectors to concatenate
+                        result_part = hcat(result_parts...)
+
+                        #now we add the (j,p,r,s,rank) parts to the (j,p) entries, multiplied by the eigenvalues
+                        idx = 1
+                        for p in keys(sdp.A[j][l][r,s])
+                            Arblib.zero!(res)
+                            for rnk=1:length(sdp.A[j][l][r,s][p].rightevs)
+                                Arblib.addmul!(res,sdp.A[j][l][r,s][p].eigenvalues[rnk],result_part[1,idx])
+                                idx+=1
+                            end
+                            if r != s #We need to take both sides of the matrix into account
+                                Arblib.mul!(res,res,2)
+                            end
+                            Arblib.add!(result[j_idx+p,1],res,result[j_idx+p,1])
                         end
-                        Arblib.add!(result[j_idx+p,1],res,result[j_idx+p,1])
                     end
                 end
             end
@@ -1094,7 +1135,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right)
     return result
 end
 
-function trace_A(sdp, A_Y, vecs_left,vecs_right)
+function trace_A(sdp, (Y, A_Y), vecs_left,vecs_right,high_ranks)
     #Here we have precomputed v^T A v already, so we dont need the vectors. But it also doesnt cost extra time, so for ease of programming we allow them
     # So what we still need to do is get the right entries from A_Y, multiply them by the right eigenvalues and sum them to get entries corresponding to (j,p)
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(sdp.b))
@@ -1102,22 +1143,30 @@ function trace_A(sdp, A_Y, vecs_left,vecs_right)
     j_idx = 0
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
-            for r=1:size(sdp.A[j][l],1)
-                for s=1:r
-                    index_to_prnk = [(p,rnk) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]
-                    prnk_to_index = Dict((p,rnk)=>i for (i,(p,rnk)) in enumerate(index_to_prnk))
-                    idx = 1
-                    for p in collect(keys(sdp.A[j][l][r,s])) # We need collect to use @threads with keys(Dict())
-                        tot = Arb(0,prec=precision(sdp.b))
-                        for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
-                            #contribution for this p is
-                            Arblib.addmul!(tot,A_Y[j][l][r,s][idx,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
-                            idx+=1
+            #for high rank matrices A[j][l], we need to take a standard inner product.
+            if high_ranks[j][l]
+                #high rank matrices have only one subblock
+                for p in keys(sdp.A[j][l][1,1])
+                    Arblib.add!(result[j_idx + p], dot(Y.blocks[j].blocks[l], sdp.A[j][l][1,1][p]),result[j_idx + p])  
+                end
+            else
+                for r=1:size(sdp.A[j][l],1)
+                    for s=1:r
+                        # index_to_prnk = [(p,rnk) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]
+                        # prnk_to_index = Dict((p,rnk)=>i for (i,(p,rnk)) in enumerate(index_to_prnk))
+                        idx = 1
+                        for p in collect(keys(sdp.A[j][l][r,s])) # We need collect to use @threads with keys(Dict())
+                            tot = Arb(0,prec=precision(sdp.b))
+                            for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
+                                #contribution for this p is
+                                Arblib.addmul!(tot,A_Y[j][l][r,s][idx,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
+                                idx+=1
+                            end
+                            if r!=s #We take both s,r and r,s into account
+                                Arblib.mul!(tot,tot,2)
+                            end
+                            Arblib.add!(result[j_idx+p,1],tot,result[j_idx+p,1])
                         end
-                        if r!=s #We take both s,r and r,s into account
-                            Arblib.mul!(tot,tot,2)
-                        end
-                        Arblib.add!(result[j_idx+p,1],tot,result[j_idx+p,1])
                     end
                 end
             end
@@ -1128,7 +1177,7 @@ function trace_A(sdp, A_Y, vecs_left,vecs_right)
 end
 #
 """Set initial_matrix to ∑_i a_i A_i"""
-function compute_weighted_A!(initial_matrix, sdp, a,vecs_left)
+function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
     # initial_matrix is a BlockDiagonal matrix of BlockDiagonal matrices of ArbMatrices
     # We add the contributions to the (blocked) upper triangular, then symmetrize
     j_idx = 0
@@ -1136,38 +1185,46 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left)
         for l in eachindex(sdp.A[j])
             Arblib.zero!(initial_matrix.blocks[j].blocks[l])
             #assuming all subblocks have the same size: (If we ever want to change that: make Q inside the r,s loops since only then we will know the size)
-            delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
-            #initialize the scratch spaces
-            Q = ArbRefMatrix(delta,delta,prec=precision(a))
-            cur = Arb(1,prec=precision(a))
-            vec = ArbRefMatrix(delta,1,prec=precision(a))
+            #Here we again need to make a distinction between low and high rank matrices A
+            # High rank is easy: we can just add x_p * A_p
+            if high_ranks[j][l]
+                #high rank matrices only have one subblock
+                for p in keys(sdp.A[j][l][1,1])
+                    Arblib.addmul!(initial_matrix.blocks[j].blocks[l], sdp.A[j][l][1,1][p], a[j_idx+p,1])
+                end
+            else              
+                delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
+                #initialize the scratch spaces
+                Q = ArbRefMatrix(delta,delta,prec=precision(a))
+                cur = Arb(1,prec=precision(a))
+                vec = ArbRefMatrix(delta,1,prec=precision(a))
 
+                for r = 1:size(sdp.A[j][l],1)
+                    for s = 1:r
+                        # Approach: sum_i a_i A_i can be written as V_i D V_i^T, with D diagonal (λ_i,rnk * a_i)
+                        # Initialize the matrices, both V^T and VD
+                        vecs_left_transpose = transpose(vecs_left[j][l][r,s])
 
-            for r = 1:size(sdp.A[j][l],1)
-                for s = 1:r
-                    # Approach: sum_i a_i A_i can be written as V_i D V_i^T, with D diagonal (λ_i,rnk * a_i)
-                    # Initialize the matrices, both V^T and VD
-                    vecs_left_transpose = transpose(vecs_left[j][l][r,s])
-
-                    # Now we compute V_r D
-                    # Scratch space:
-                    # Note that vecs_right has the same number of vectors as vecs_left, of the same size, because A[j][l][r,s] has the same number of leftevs as rightevs
-                    vecs_right = similar(vecs_left[j][l][r,s]) #V_rD. So we multiply every vector (column) by the corresponding eigenvalue
-                    idx = 1
-                    for p in keys(sdp.A[j][l][r,s])
-                        for rnk in eachindex(sdp.A[j][l][r,s][p].eigenvalues)
-                            Arblib.mul!(cur,a[j_idx+p,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
-                            Arblib.mul!(vec, sdp.A[j][l][r,s][p].rightevs[rnk],cur)
-                            vecs_right[:,idx] = vec
-                            idx+=1
+                        # Now we compute V_r D
+                        # Scratch space:
+                        # Note that vecs_right has the same number of vectors as vecs_left, of the same size, because A[j][l][r,s] has the same number of leftevs as rightevs
+                        vecs_right = similar(vecs_left[j][l][r,s]) #V_rD. So we multiply every vector (column) by the corresponding eigenvalue
+                        idx = 1
+                        for p in keys(sdp.A[j][l][r,s])
+                            for rnk in eachindex(sdp.A[j][l][r,s][p].eigenvalues)
+                                Arblib.mul!(cur,a[j_idx+p,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
+                                Arblib.mul!(vec, sdp.A[j][l][r,s][p].rightevs[rnk],cur)
+                                vecs_right[:,idx] = vec
+                                idx+=1
+                            end
                         end
-                    end
-                    Arblib.get_mid!(vecs_right,vecs_right)
+                        Arblib.get_mid!(vecs_right,vecs_right)
 
-                    # calculate V_rD * V_l^T
-                    matmul_threaded!(Q,vecs_right,vecs_left_transpose)
-                    Arblib.get_mid!(Q,Q)
-                    initial_matrix.blocks[j].blocks[l][(r-1)*delta+1:r*delta,(s-1)*delta+1:s*delta] = Q
+                        # calculate V_rD * V_l^T
+                        matmul_threaded!(Q,vecs_right,vecs_left_transpose)
+                        Arblib.get_mid!(Q,Q)
+                        initial_matrix.blocks[j].blocks[l][(r-1)*delta+1:r*delta,(s-1)*delta+1:s*delta] = Q
+                    end
                 end
             end
             if size(sdp.A[j][l],1)>1
@@ -1197,6 +1254,7 @@ function compute_search_direction!(
     Q,
     vecs_left,
     vecs_right,
+    high_ranks,
 )
     prec = precision(Y)
     # using the decomposition, compute the search directions
@@ -1228,7 +1286,7 @@ function compute_search_direction!(
         #rhs_x = -d - <A_*,Z>
         #we use dx for rhs_x
         Arblib.neg!(dx,d)
-        Arblib.sub!(dx,dx,trace_A(sdp, dY,vecs_left,vecs_right))
+        Arblib.sub!(dx,dx,trace_A(sdp, dY,vecs_left,vecs_right,high_ranks))
         Arblib.get_mid!(dx, dx)
     end
 
@@ -1292,7 +1350,7 @@ function compute_search_direction!(
     time_dX = @elapsed begin
         #dX = ∑_i dx_i A_i + P
         #compute the sum
-        compute_weighted_A!(dX, sdp, dx,vecs_left)
+        compute_weighted_A!(dX, sdp, dx,vecs_left,high_ranks)
         #add P
         Threads.@threads for (j,l) in threadinginfo.jl_order
             Arblib.add!(dX.blocks[j].blocks[l],dX.blocks[j].blocks[l],P.blocks[j].blocks[l])

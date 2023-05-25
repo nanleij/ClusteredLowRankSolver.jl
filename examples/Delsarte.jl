@@ -32,7 +32,44 @@ function delsarte(n, d,costheta, precision=512; all_free = false, kwargs...)
 
     #Construct the SDP with or without using free variables for the a_k
     if all_free
-        sdp = ClusteredLowRankSDP(sos,[k for k=0:2d])
+        sdp = ClusteredLowRankSDP(sos,as_free = [k for k=0:2d])
+    else
+        sdp = ClusteredLowRankSDP(sos)
+    end
+
+    #Solve the SDP and return results
+    return status, sol,time, errorcode = solvesdp(sdp; kwargs...)
+end
+export delsarte_highrank
+function delsarte_highrank(n, d,costheta, precision=512; all_free = false, kwargs...)
+    #set up the polynomial field
+    setprecision(precision)
+    FF = RealField
+    P, (u, ) = PolynomialRing(FF, ["u"])
+
+    #compute both the gegenbauer polynomials and the sos basis
+    gbasis = basis_gegenbauer(2d, n, u)
+    samples = sample_points_chebyshev(2d,-1,costheta)
+    sosbasis, samples = approximatefekete([u^k for k=0:2d], samples)
+
+    #construct the constraint ∑_k a_k P^n_k(u) + SOS + (u+1)(cos(θ)-u)*SOS = - 1
+    c = Dict()
+    for k=0:2d
+        c[Block(k)] = [gbasis[k+1];;]#LowRankMatPol([gbasis[k+1]], [[1]])
+    end
+    c[Block(:A)] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    c[Block(:B)] = LowRankMatPol([(u+1)*(costheta-u)], [sosbasis[1:d]])
+    constraint = Constraint(-1, c, Dict(), samples)
+
+    #Construct the objective 1 + ∑_k a_k
+    objective = Objective(1, Dict(Block(k) => hcat([FF(1)]) for k=0:2d), Dict())
+
+    #Construct the SOS problem: minimize the objective s.t. the constraint
+    sos = LowRankPolProblem(false, objective, [constraint])
+
+    #Construct the SDP with or without using free variables for the a_k
+    if all_free
+        sdp = ClusteredLowRankSDP(sos, as_free = [k for k=0:2d])
     else
         sdp = ClusteredLowRankSDP(sos)
     end

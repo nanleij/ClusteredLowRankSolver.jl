@@ -75,7 +75,6 @@ end
 function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
     #The cholesky of Arblib, but with zeroed error bounds during the calculations
     size(A,1) == size(A,2) || error("The matrix must be square")
-
     n = size(A,1)
     Arblib.get_mid!(A,A)
     for i=1:n
@@ -91,6 +90,7 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
         end
         # Arblib.get_mid!(A[i,i], A[i,i])
         if Arblib.is_positive(A[i,i]) == 0
+            @show A[i,i], i
             return 0
         end
         approx_sqrt!(A[i,i], A[i,i], prec)
@@ -212,7 +212,6 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
         idx_rows = [idx_rows_part[div(i,b)+1] for i=0:n-1]
         idx_cols = [idx_cols_part[i%b+1] for i=0:n-1]
 
-
         n_inner = 1
         idx_inner = [1:size(A,2) for i=1:n]
         res_idx = [1 for i=1:n]
@@ -292,3 +291,6 @@ end
 # However, then we need to define precision for ArbMatrices and BigFloats
 precision(P::BlockDiagonal) = precision(P.blocks[1]) #we assume that all blocks have the same precision
 precision(x) = Base.precision(x) #for other things, just use the Base version
+
+
+
