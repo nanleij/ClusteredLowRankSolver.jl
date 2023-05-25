@@ -270,7 +270,7 @@ function three_point_spherical_cap_highrank(n, d, costheta, prec=256, all_free=f
     end
     basis = basis_gegenbauer(2d, n, w)
     for k=0:2d # a_k
-        f[Block((:a,k))] = [basis[k+1];;]#LowRankMatPol([basis[k+1]], [[1]])
+        f[Block((:a,k))] = hcat([basis[k+1]])#LowRankMatPol([basis[k+1]], [[1]])
     end
     uni_basis = basis_chebyshev(2d, x)
     samples1d = sample_points_chebyshev(2d, -1, costheta) #we can take more samples, now we just get a better basis based on these samples. But since chebyshev points are relatively good, this is not a problem

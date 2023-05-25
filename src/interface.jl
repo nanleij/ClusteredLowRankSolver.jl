@@ -157,7 +157,7 @@ end
 polys = Union{MPolyElem, SampledMPolyElem, Real}
 
 """
-    LowRankMat(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
+    LowRankMatPol(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
 
 The matrix ``∑_i λ_i v_i w_i^T``.
 
@@ -370,7 +370,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                 for j=1:i
                     if i==j
                         push!(sos.constraints,Constraint(0,
-                            Dict(Block(l,i,j)=> [1;;]), # matrix variable
+                            Dict(Block(l,i,j)=> hcat([1])), # matrix variable
                             Dict((l,i,j)=>-1), # free variable
                             ))
                     else # i != j, so both sides get 1/2
@@ -379,7 +379,7 @@ function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precisio
                         #     Dict((l,i,j)=>-2),
                         # ))
                         push!(sos.constraints,Constraint(0,
-                            Dict(Block(l,i,j) => [1;;], Block(l,j,i) => [1;;]),
+                            Dict(Block(l,i,j) => hcat([1]), Block(l,j,i) => hcat([1])),
                             Dict((l,i,j)=>-2),
                         ))
                     end
@@ -632,6 +632,20 @@ optimal(::Optimal) = true
 #TODO: decide whether to change CLRSResults to ClusteredLowRankSolverResults
 #TODO: should we remove the y and the Y now that we gave the names back
 #TODO: should we convert x, X to BigFloat too? or keep matrixvar etc in Arbs?
+"""
+CLRSResults contains the output of the solver. 
+
+Fields: 
+ - x, X : the primal variables used in the solver (in Arbs)
+ - y, Y : the dual variables used in the solver (in Arbs)
+ - primal_objective : the primal objective of the solution (BigFloat)
+ - dual_objective : the dual objective of the solution (BigFloat)
+ - matrixvar : a dictionary mapping the user defined names of the matrix variables to the corresponding solution matrices (Matrix{BigFloat}) 
+ - freevar : a dictionary mapping the user defined names of the free variables to the corresponding solution (BigFloat) 
+
+ Note that the block structure of the matrix variables is not preserved. 
+ For example, the key of the matrix corresponding to the input Block(:F,r,s) is given by :F.
+"""
 struct CLRSResults
     #the internally used matrices
     x::ArbRefMatrix

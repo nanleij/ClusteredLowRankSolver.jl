@@ -55,7 +55,7 @@ function delsarte_highrank(n, d,costheta, precision=512; all_free = false, kwarg
     #construct the constraint ∑_k a_k P^n_k(u) + SOS + (u+1)(cos(θ)-u)*SOS = - 1
     c = Dict()
     for k=0:2d
-        c[Block(k)] = [gbasis[k+1];;]#LowRankMatPol([gbasis[k+1]], [[1]])
+        c[Block(k)] = hcat([gbasis[k+1]])#LowRankMatPol([gbasis[k+1]], [[1]])
     end
     c[Block(:A)] = LowRankMatPol([1], [sosbasis[1:d+1]])
     c[Block(:B)] = LowRankMatPol([(u+1)*(costheta-u)], [sosbasis[1:d]])

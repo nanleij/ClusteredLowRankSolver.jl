@@ -8,11 +8,11 @@ In this section we will explain the interface, which is focused on semidefinite 
     & Y^j \succeq 0,
 \end{aligned}
 ```
-where we optimize over free scalar variables ``y`` and positive semidefinite variables ``Y^j = \mathrm{diag}(Y^{j,1}, \ldots, Y^{j,L_j})``. The polynomial matrices ``A^j(x)`` are required to be symmetric and have a low-rank block form. That is, ``A^j(x)`` is block-diagonal with blocks ``A^{j,l}(x)`` and
+where we optimize over free scalar variables ``y`` and positive semidefinite variables ``Y^j = \mathrm{diag}(Y^{j,1}, \ldots, Y^{j,L_j})``. The polynomial matrices ``A^j(x)`` are required to be symmetric and have a block form with low-rank and normal blocks. That is, ``A^j(x)`` is block-diagonal with blocks ``A^{j,l}(x)`` and
 ```math
     A^{j,l}(x) = \sum_{r,s=1}^{N_{j,l}} A^{j,l}_{r,s}(x) \otimes E_{r,s}^{R_{j}(l)}
 ```
-where ``E_{r,s}^N`` is the ``N \times N`` matrix with a one in the ``(r,s)`` entry and zeros elsewhere. Furthermore, ``A^{j,l}_{r,s}(x)`` is of low rank such that ``A^{j,l}_{r,s} = (A^{j,l}_{s,r})^T``. Often, the non-diagonal block structure is not used (``N=1`` for all ``j,l``). One example where it is used is in polynomial matrix programs (see, e.g., [de-laat-clustered-2022](@cite)).
+where ``E_{r,s}^N`` is the ``N \times N`` matrix with a one in the ``(r,s)`` entry and zeros elsewhere. Furthermore, ``A^{j,l}_{r,s}(x)`` can be of low rank such that ``A^{j,l}_{r,s} = (A^{j,l}_{s,r})^T``. Often, the non-diagonal block structure is not used (``N=1`` for all ``j,l``). One example where it is used is in polynomial matrix programs (see, e.g., [de-laat-clustered-2022](@cite)). 
 
 This is then converted to a clustered low-rank semidefinite program by [Sampling](@ref).
 
@@ -46,7 +46,7 @@ function min_f(d)
 
     # Define the constraint SOS + M = f
     # free variables
-    free_dict = Dict(:M => R(1))
+    free_dict = Dict(:M => 1)
 
     # PSD variables (the sum of squares polynomial) & samples
     psd_dict = Dict()
@@ -54,7 +54,7 @@ function min_f(d)
     samples = sample_points_simplex(3,2d)
     basis, samples = approximatefekete(w, samples)
 
-    psd_dict[Block(:Y)] = LowRankMatPol([R(1)], [basis[1:binomial(3+d,d)]])
+    psd_dict[Block(:Y)] = LowRankMatPol([1], [basis[1:binomial(3+d,d)]])
 
     # the constraint
     con  = Constraint(f, psd_dict, free_dict, samples)
