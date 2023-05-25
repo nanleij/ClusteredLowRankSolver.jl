@@ -11,11 +11,11 @@ A clustered low-rank semidefinite program is defined as
 	& Y^j \succeq 0,
 \end{aligned}
 ```
-where the optimization is over the positive semidefinite matrices ``Y^j`` and the vector of free variables ``y``. Here ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the low-rank structure
+where the optimization is over the positive semidefinite matrices ``Y^j`` and the vector of free variables ``y``. Here ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the structure
 ```math
 	A_p^j = \bigoplus_{l=1}^{L_j} \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)}.
 ```
-The matrices ``A_p^j(l;r, s)`` are of low rank and ``A_p^j(l;r, s)^{\sf T} =  A_p^j(l;s, r)``. Here ``E_{r,s}^n`` is the ``n \times n`` matrix with a one at position ``(r,s)`` and zeros otherwise. 
+For fixed ``j, l``, the matrices ``A_p^j(l;r,s)`` are either normal matrices or of low rank. Furthermore, the full matrices are symmetric, which translates to the condition ``A_p^j(l;r, s)^{\sf T} =  A_p^j(l;s, r)``. The matrix ``E_{r,s}^n`` is the ``n \times n`` matrix with a one at position ``(r,s)`` and zeros otherwise. 
 
 One example where this structure shows up is when using polynomial constraints which are converted to semidefinite programming constraints by sampling.
 Such a semidefinite program with low-rank polynomial constraints is defined as

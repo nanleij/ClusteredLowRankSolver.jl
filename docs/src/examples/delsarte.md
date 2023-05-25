@@ -65,10 +65,10 @@ For the first constraint, we need the Gegenbauer polynomials, which are  defined
     for k = 1:2d
         # The eigenvalues are the gegenbauer polynomials,
         # and the vectors have the polynomial 1 as entry:
-        psd_dict1[Block((:a, k))] =
-            LowRankMatPol([gp[k+1]], [[1]])
+        psd_dict1[Block((:a, k))] = hcat([gp[k+1]])
     end
 ```
+Since Julia 1.7, it is possible to construct matrices with ``[gp[k+1];;]`` instead of ``hcat``. Note that here we use a general (high-rank) constraint matrix for the variables ``a_k``.
 For the sums-of-squares part, we define a basis and the set of samples points. We use `approximatefekete` to obtain a basis which is orthogonal on the sample points.
 ```julia
     # 2d+1 Chebyshev points in the interval [-1, cos(θ)]
@@ -96,7 +96,7 @@ The second constraint seems simpler since it does not involve polynomials. Howev
     # The variables a_k and the slack variable have coefficient 1:
     psd_dict2 = Dict()
     for k = 1:2d
-        psd_dict2[Block((:a, k))] = LowRankMatPol([1], [[1]])
+        psd_dict2[Block((:a, k))] = hcat([1])
     end
     psd_dict2[Block(:slack)] = LowRankMatPol([1], [[1]])
     # We have one sample, which is arbitrary
