@@ -107,7 +107,7 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
 end
 
 
-function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
+function unique_idx(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
     unique_idx = Int[]
     for i=1:length(x)
         #We compare this one with the elements we did already
@@ -123,7 +123,7 @@ function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
             push!(unique_idx,i)
         end
     end
-    return x[unique_idx]
+    return unique_idx
 end
 
 function approx_mul_transpose!(C::T, AT::T, B::T; prec=precision(C)) where T<:Union{ArbMatrix,ArbRefMatrix}

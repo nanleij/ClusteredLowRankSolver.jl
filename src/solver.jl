@@ -188,9 +188,14 @@ function solvesdp(
 
     #separate the high-rank blocks from the low-rank ones.
     # Precompute the matrices for the bilinear pairings and the matrices used for ∑_i x_i A_i and <A^j_*, Y>
-    leftvecs_pairings, rightvecs_pairings, pointers_left, pointers_right,high_ranks = precompute_matrices_bilinear_pairings(sdp,subblocksizes)
+    leftvecs_pairings, rightvecs_pairings, pointers_left, pointers_right,high_ranks, allocs_precompute = precompute_matrices_bilinear_pairings(sdp,subblocksizes)
+    #vecs_left and vecs_right are actually just parts of leftvecs_pairings and rightvecs_pairings ? 
+    # note that we can take a flag 'symmetric' if vecsleft == vecsright for all j,l,r,s; then we only have to make the matrix for half of them
+    # Note that we can forget about either the leftvecs_pairings or vecs_left, and possibly use the pointers (if we forget about vecs_left)
+    # in either case, we save half the memory we use here.
     vecs_left = [[[ArbRefMatrix(0,0) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     vecs_right = [[[ArbRefMatrix(0,0) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
+    allocs_leftright = 0
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
             if high_ranks[j][l]
@@ -205,14 +210,20 @@ function solvesdp(
                 else
                     vecs_left[j][l][r,s] = cur_left
                 end
+                allocs_leftright += Arblib.allocated_bytes(vecs_left[j][l][r,s])
                 if size(cur_right,1) == 0
                     vecs_right[j][l][r,s] = ArbRefMatrix(delta,0,prec=prec)
                 else
                     vecs_right[j][l][r,s] = cur_right
                 end
+                allocs_leftright += Arblib.allocated_bytes(vecs_right[j][l][r,s])
             end
         end
     end
+    @show allocs_leftright
+    @show allocs_precompute
+    allocsX = sum(sum(Arblib.allocated_bytes.(X.blocks[j].blocks)) for j in eachindex(X.blocks))
+    @show allocsX
 
     #step 2
     #loop initialization: compute or set the initial values, and print the header
@@ -224,7 +235,6 @@ function solvesdp(
 	end
     alpha_p = alpha_d = Arb(0, prec = prec)
     mu = dot(X, Y) / size(X, 1)
-
     # Preallocation. In principle we can collect them in a struct or something like that and use them that way.
 	# Then we only need to give e.g. Variables and Preallocated to functions instead of e.g. P,p,d, dX,dY,dx,dy
     # We overwrite R, X_inv, S and A_Y in each iteration.
@@ -243,6 +253,7 @@ function solvesdp(
     dy = similar(y)
     bilinear_pairings_Y = [[[ r > s ? ArbRefMatrix(0,0,prec=matmul_prec) : ArbRefMatrix(size(leftvecs_pairings[j][l][s],1),size(rightvecs_pairings[j][l][r],2),prec=matmul_prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     bilinear_pairings_Xinv = [[[r > s ? ArbRefMatrix(0,0,prec=matmul_prec) : ArbRefMatrix(size(leftvecs_pairings[j][l][s],1),size(rightvecs_pairings[j][l][r],2),prec=matmul_prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
+    allocs = 
     LinvB = [
         ArbRefMatrix(size(sdp.c[j],1), size(sdp.b,1), prec = prec) for j in eachindex(sdp.A)
     ]
@@ -789,12 +800,13 @@ function compute_residual_R!(R, X, Y, mu, dX, dY, tempX, threadinginfo)
 end
 
 function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precision(sdp.b))
-    #In this function we precompute the matrices [v_^j,l_p,r,s ...] for the matrix multiplications Vl*Y*Vr and Vl*X^-1 * Vr, and the indexing j,l,p,r,s -> column/row
+    #In this function we precompute the matrices [v^j,l_p,r,s ...] for the matrix multiplications Vl*Y*Vr and Vl*X^-1 * Vr, and the indexing j,l,p,r,s -> column/row
     # This only has to be done once, so performance does not have a high priority here.
     # We try to remove duplicates, because that is the main difference between the old and new format for things like binary sphere packing.
     leftvecs = [[ArbRefMatrix[] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     rightvecs = [[ArbRefMatrix[] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     high_ranks = [Bool[false for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
+    total_allocs = 0
     # Indexing: j,l,r
     # For every (s,p,rank) combination for this j,l,r we have an entry pointing towards the vector from leftvecs resp rightvecs.
     pointers_right = [[[Dict{Tuple{Int,Int,Int},Int}() for r=1:size(sdp.A[j][l],1)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
@@ -819,16 +831,20 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
                     pointers_right[j][l][r] = Dict{Tuple{Int,Int,Int},Int}() #nothing to point to, and nothing which points to anything
                 else
                     #remove duplicates
-                    unique_right = unique(right)
+                    unique_right = unique_idx(right)
                     #points to the column with the vector we want
-                    pntr_right = Dict((s,p,rnk) => findfirst(x-> x==right[i], unique_right) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]))
+                    pntr_right = Dict((s,p,rnk) => findfirst(x-> right[x]==right[i], unique_right) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]))
                     pointers_right[j][l][r] = pntr_right
-                    unique_right_arb = hcat(unique_right...)
-                    cur_rvec = ArbRefMatrix(size(unique_right_arb,1), size(unique_right_arb,2),prec=prec)
-                    Arblib.set_round!.(cur_rvec, unique_right_arb) #round to the wanted precision
-                    Arblib.get_mid!(cur_rvec, cur_rvec)
-                    push!(rightvecs[j][l], cur_rvec)
+                    unique_right_arb = ArbRefMatrix(size(right[1],1),length(unique_right), prec=prec)
+                    for (i, i_vec) in enumerate(unique_right)
+                        unique_right_arb[:, i] = right[i_vec]
+                    end
+                    # cur_rvec = ArbRefMatrix(size(unique_right_arb,1), size(unique_right_arb,2),prec=prec)
+                    Arblib.set_round!.(unique_right_arb, unique_right_arb) #round to the wanted precision
+                    Arblib.get_mid!(unique_right_arb, unique_right_arb)
+                    push!(rightvecs[j][l], unique_right_arb)
                 end
+                total_allocs += Arblib.allocated_bytes(unique_right_arb)
 
                 # We do the same for the left eigenvectors
                 left = [sdp.A[j][l][r,s][p].leftevs[rnk] for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]
@@ -836,23 +852,26 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
                     push!(leftvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
                     pointers_left[j][l][r] = Dict{Tuple{Int,Int,Int},Int}()
                 else
-                    unique_left = unique(left)
-                    pntr_left = Dict((s,p,rnk) => findfirst(x -> x==left[i], unique_left) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]))
+                    #remove duplicates
+                    unique_left = unique_idx(left)
+                    #points to the column with the vector we want
+                    pntr_left = Dict((s,p,rnk) => findfirst(x-> left[x]==left[i], unique_left) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]))
                     pointers_left[j][l][r] = pntr_left
-                    # because we only use left_vecs for multiplication from the left, we will transpose them
-                    unique_left_arb =  hcat(unique_left...)
-                    cur_lvec = ArbRefMatrix(size(unique_left_arb,1), size(unique_left_arb,2),prec=prec)
-                    Arblib.set_round!.(cur_lvec, unique_left_arb) # round to the wanted precision
-                    Arblib.get_mid!(cur_lvec, cur_lvec) #make the matrix exact in case this is not the case yet. This might reduce memory usage of approx_mul!
-
-                    push!(leftvecs[j][l], transpose(cur_lvec))
-                    @assert length(pntr_left) == length(pntr_right) # we run this only once, so extra checks do not matter much
+                    unique_left_arb = ArbRefMatrix(size(left[1],1),length(unique_left), prec=prec)
+                    for (i, i_vec) in enumerate(unique_left)
+                        unique_left_arb[:, i] = left[i_vec]
+                    end
+                    Arblib.set_round!.(unique_left_arb, unique_left_arb) #round to the wanted precision
+                    Arblib.get_mid!(unique_left_arb, unique_left_arb)
+                    push!(leftvecs[j][l], unique_left_arb)
                 end
+                total_allocs += Arblib.allocated_bytes(unique_left_arb)
+
 
             end
         end
     end
-    return leftvecs,rightvecs,pointers_left,pointers_right, high_ranks
+    return leftvecs,rightvecs,pointers_left,pointers_right, high_ranks, total_allocs
 end
 
 """Compute S, integrated with the precomputing of the bilinear pairings"""
@@ -1144,7 +1163,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
                         indices = [0, cumsum(thread_sizes)...]
                         result_parts = [ArbRefMatrix(1,indices[i+1]-indices[i],prec=precision(Z)) for i=1:used_threads]
 
-                        #apply the matrix multiplications V_l * Z * V_r
+                        #apply the matrix multiplications: ones * (V_l o (Z * V_r))
                         Threads.@threads for i=1:used_threads
                             #window matrices
                             w1 = ArbRefMatrix(0,0)
