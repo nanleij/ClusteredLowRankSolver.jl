@@ -144,6 +144,7 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
 
     # n = Threads.nthreads()
     #check dimensions
+    # @show (size(C), size(A), size(B))
     @assert size(C,1) == size(A,1) && size(C,2) == size(B,2) && size(A,2) == size(B,1)
     #check for the special case of 1 thread:
     if n==1 || size(A,1)*size(A,2)*size(B,2) * div(prec,256) < 6^3
