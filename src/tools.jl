@@ -106,6 +106,24 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
     return 1
 end
 
+function get_allocations_arb(v::T) where T<:Union{ArbMatrix, ArbRefMatrix}
+    Arblib.allocated_bytes(v)
+end
+function get_allocations_arb(v)
+    total = 0
+    for i in v
+        total += get_allocations_arb(i)
+    end
+    return total
+end
+function get_allocations_arb(v::Dict)
+    total = 0
+    for (k,val) in v
+        total += get_allocations_arb(val)
+    end
+    return total
+end
+
 
 function unique_idx(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
     unique_idx = Int[]
@@ -125,13 +143,31 @@ function unique_idx(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
     end
     return unique_idx
 end
+function unique_cols(x::T, dim = 2) where T<:Union{ArbMatrix,ArbRefMatrix}
+    unique_idx = Int[]
+    for i in axes(x,dim)
+        #We compare this one with the elements we did already
+        duplicate = false
+        for j=1:i-1
+            if (dim == 2 && x[:,i] == x[:,j] ) || (dim == 1 && x[i,:] == x[j, :])
+                # this is a duplicate
+                duplicate = true
+                break
+            end
+        end
+        if !duplicate
+            push!(unique_idx,i)
+        end
+    end
+    return unique_idx
+end
 
 function approx_mul_transpose!(C::T, AT::T, B::T; prec=precision(C)) where T<:Union{ArbMatrix,ArbRefMatrix}
     # C = AT^T * B = (B^T * AT)^T
     #assume that AT is much larger than B (e.g., matrix * vector)
-    BT = T(size(B,2), size(B,1), prec=precision(B))
-    res = T(size(C, 2), size(C,1), prec=prec)
-    Arblib.transpose!(BT, B)
+    BT = transpose(B)
+    res = transpose(C)
+    # Arblib.transpose!(BT, B)
     Arblib.approx_mul!(res,BT,AT)
     Arblib.transpose!(C, res)
 end
@@ -144,6 +180,7 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
 
     # n = Threads.nthreads()
     #check dimensions
+    # @show (size(C), size(A), size(B))
     @assert size(C,1) == size(A,1) && size(C,2) == size(B,2) && size(A,2) == size(B,1)
     #check for the special case of 1 thread:
     if n==1 || size(A,1)*size(A,2)*size(B,2) * div(prec,256) < 6^3
