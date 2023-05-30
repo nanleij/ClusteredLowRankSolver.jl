@@ -999,7 +999,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                     matmul_threaded!(part_r, temp_window, rightvecs[j][l][r], prec=matmul_prec)
                     Arblib.window_clear!(temp_window)
                     Arblib.get_mid!(part_r, part_r)
-                    for s=1:r
+                    for s=1:size(sdp.A[j][l],1)
                         Arblib.window_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
                         Arblib.window_init!(temp_window2, bilinear_pairings_Y[s,r], 0, 0, size(leftvecs[j][l][s],1), size(part_r,2))
                         matmul_threaded!(temp_window2, leftvecs[j][l][s], temp_window, prec=matmul_prec)#,opt=4)
@@ -1011,10 +1011,9 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                     matmul_threaded!(part_r, temp_window, rightvecs[j][l][r], prec=matmul_prec)
                     Arblib.window_clear!(temp_window)
                     Arblib.get_mid!(part_r, part_r)
-                    for s=1:r
+                    for s=1:size(sdp.A[j][l],1)
                         Arblib.window_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
                         Arblib.window_init!(temp_window2, bilinear_pairings_Xinv[s,r], 0, 0, size(leftvecs[j][l][s],1), size(part_r,2))
-
                         matmul_threaded!(temp_window2,leftvecs[j][l][s],temp_window,prec=matmul_prec)#,opt=4)
                         Arblib.window_clear!(temp_window)
                         Arblib.window_clear!(temp_window2)
@@ -1041,19 +1040,11 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                             for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
                                 #This way we have A_Y in the order of [for p in Ps for i=1:rank]
                                 # here we take the transpose element, since we only have the bilinear pairings for r <= s
-                                try 
-                                if r != s
-                                    A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[s,r][pointers_right[j][l][s][(r,p,rnk)], pointers_left[j][l][r][(s,p,rnk)]]
-                                else
-                                    A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[r,s][pointers_left[j][l][r][(s,p,rnk)], pointers_right[j][l][s][(r,p,rnk)]]
-                                end
-                                catch e
-                                    @show j,l,r,s,p,rnk,idx
-                                    @show size(bilinear_pairings_Y[r,s])
-                                    @show pointers_left[j][l][r][(s,p,rnk)]
-                                    @show pointers_right[j][l][s][(r,p,rnk)]
-                                    rethrow(e)
-                                end
+                                # if r != s
+                                #     A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[s,r][pointers_right[j][l][s][(r,p,rnk)], pointers_left[j][l][r][(s,p,rnk)]]
+                                # else
+                                A_Y[j][l][r,s][idx,1] = bilinear_pairings_Y[r,s][pointers_left[j][l][r][(s,p,rnk)], pointers_right[j][l][s][(r,p,rnk)]]
+                                # end
                                 # end
                                 idx+=1
                             end
