@@ -1,7 +1,7 @@
 """
 Distribute the weights over n (about) equal-sized bins by swapping between bins with high total weight and low total weight.
 """
-function distribute_weights_swapping(weights,n;nswaps = length(weights)^2)
+function distribute_weights_swapping(weights,n;nswaps = min(length(weights)^2,100))
     # we first 'normally' distribute the weights (first k to first thread, second k to second thread etc.)
     # Then we try to improve it a number of times by swapping weights between sets with a high and low total weight
     step = div(length(weights),n)+1 # first number of sets have this size, second part has this size-1
@@ -11,7 +11,7 @@ function distribute_weights_swapping(weights,n;nswaps = length(weights)^2)
     set_weights = [sum(weights[sets[i]]) for i=1:length(sets)] #the total weights
 
     # edge case: less than 1 weight for every core
-    if length(weights) <= n
+    if length(weights) <= n || n == 1
         return sets,set_weights,[weights[s] for s in sets]
     end
 
@@ -86,7 +86,7 @@ function ThreadingInfo(sdp::ClusteredLowRankSDP,n=Threads.nthreads())
     # Computing the step length takes a cholesky ~n^3 . Eigenvalues should also take ~n^3
     jl_order = [(j,l) for j in eachindex(sdp.A) for l in eachindex(sdp.A[j])]
     jl_pair_weights = [Y_blocksizes[j][l]^3 for (j,l) in jl_order]
-    setsjl, weightsjl, weight_distjl = distribute_weights_swapping(jl_pair_weights, n, nswaps=length(jl_pair_weights)^2)
+    setsjl, weightsjl, weight_distjl = distribute_weights_swapping(jl_pair_weights, n)
     # to get these sets on the cores, we need to put the longer sets first
     sort!(setsjl, by=length, rev=true)
     jl_order = jl_order[vcat(setsjl...)]
@@ -95,7 +95,7 @@ function ThreadingInfo(sdp::ClusteredLowRankSDP,n=Threads.nthreads())
     # We base the weights for the clusters on the Cholesky decomposition.
     # In principle we could instead use the time for the solving (P[j]^2*N). Not sure what is better, maybe P[j]^2*N/2 + 1/3*P[j]^3
     j_order_weights = [size(sdp.c[j],1)^3 for j in eachindex(sdp.c)] # [1//2 * size(sdp.c[j],1)^2*size(sdp.b,1) + 1//3 * size(sdp.c[j].1)^3 for j in eachindex(sdp.c)]
-    setsj, weightsj, weight_distj = distribute_weights_swapping(j_order_weights, n, nswaps = length(j_order_weights)^2)
+    setsj, weightsj, weight_distj = distribute_weights_swapping(j_order_weights, n)
     sort!(setsj, by=length, rev=true)
     j_order = vcat(setsj...)
     return ThreadingInfo(j_order,jl_order)

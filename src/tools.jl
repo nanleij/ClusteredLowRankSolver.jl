@@ -106,8 +106,26 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
     return 1
 end
 
+function get_allocations_arb(v::T) where T<:Union{ArbMatrix, ArbRefMatrix}
+    Arblib.allocated_bytes(v)
+end
+function get_allocations_arb(v)
+    total = 0
+    for i in v
+        total += get_allocations_arb(i)
+    end
+    return total
+end
+function get_allocations_arb(v::Dict)
+    total = 0
+    for (k,val) in v
+        total += get_allocations_arb(val)
+    end
+    return total
+end
 
-function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
+
+function unique_idx(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
     unique_idx = Int[]
     for i=1:length(x)
         #We compare this one with the elements we did already
@@ -123,7 +141,35 @@ function unique(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
             push!(unique_idx,i)
         end
     end
-    return x[unique_idx]
+    return unique_idx
+end
+function unique_cols(x::T, dim = 2) where T<:Union{ArbMatrix,ArbRefMatrix}
+    unique_idx = Int[]
+    for i in axes(x,dim)
+        #We compare this one with the elements we did already
+        duplicate = false
+        for j=1:i-1
+            if (dim == 2 && x[:,i] == x[:,j] ) || (dim == 1 && x[i,:] == x[j, :])
+                # this is a duplicate
+                duplicate = true
+                break
+            end
+        end
+        if !duplicate
+            push!(unique_idx,i)
+        end
+    end
+    return unique_idx
+end
+
+function approx_mul_transpose!(C::T, AT::T, B::T; prec=precision(C)) where T<:Union{ArbMatrix,ArbRefMatrix}
+    # C = AT^T * B = (B^T * AT)^T
+    #assume that AT is much larger than B (e.g., matrix * vector)
+    BT = transpose(B)
+    res = transpose(C)
+    # Arblib.transpose!(BT, B)
+    Arblib.approx_mul!(res,BT,AT)
+    Arblib.transpose!(C, res)
 end
 
 function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precision(C), opt::Int=0) where T<:Union{ArbMatrix, ArbRefMatrix}
@@ -134,15 +180,17 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
 
     # n = Threads.nthreads()
     #check dimensions
+    # @show (size(C), size(A), size(B))
     @assert size(C,1) == size(A,1) && size(C,2) == size(B,2) && size(A,2) == size(B,1)
     #check for the special case of 1 thread:
-    if n==1 || size(A,1)*size(A,2)*size(B,2) * div(prec,256) < 1000
+    if n==1 || size(A,1)*size(A,2)*size(B,2) * div(prec,256) < 6^3
         #TODO: determine up to what sizes (& what number of threads) running multithreaded is better than threaded.
         return Arblib.approx_mul!(C,A,B,prec=prec)
     end
     # determine how to do threading
-    if !(opt in [1,2,3,4])
-        opt = argmax([size(B,2),size(A,1),size(A,2)])
+    if !(opt in [1,2,3])
+        #we don't really want to do the inner (option 3), but if that size is more than twice as large, we do that.
+        opt = argmax([size(B,2),size(A,1),1//2*size(A,2)]) 
     end
 
     # opt == 1 => distribute the columns of B over threads (preferred above rows when equal due to julia/arb being column-major)
@@ -150,134 +198,73 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
     # opt == 3 => distribute the columns of A/rows of B over threads and add the results
     # Option 1 and 2 are preferred above 3, because in those cases we don't have to add matrices. argmax gives the first maximal element
     # for now, we'll just do one of the options. Maybe in some cases it is better to have for example a 3x3 grid instead of 1x9, so to use multiple options instead of 1
-    # That will just be generating different idx_rows, idx_cols and inner stuff
-
     if opt == 1
-        thread_func_right!(C,A,B,Arblib.approx_mul!,prec=prec)
-        return C
-    else
-        idx_cols = [1:size(B,2) for i=1:n]
-    end
-    if opt == 2
-        thread_func_left!(C,A,B,Arblib.approx_mul!,prec=prec)
-        return C
-    else
-        idx_rows = [1:size(A,1) for i=1:n]
-    end
-
-    #If we are threading over the outer part, we only need one result. So n_inner gives the number of results, idx_inner gives the indices thread i uses, res_idx gives which result is used
-    if opt == 3
-        n_inner = n
-        nr = size(A,2)
-        # every thread gets at least floor(nr/n) rows, and we add the remaining parts until they are all distributed
-        sizes = [div(nr,n_inner) for i=1:n_inner] .+ [div(nr,n_inner)*n_inner+i <= nr ? 1 : 0 for i=1:n_inner]
-        idxs = [0, cumsum(sizes)...]
-        idx_inner = [idxs[i]+1:idxs[i+1] for i=1:n_inner]
-        res_idx = [i for i=1:n_inner]
-    else
-        n_inner = 1
-        idx_inner = [1:size(A,2) for i=1:n]
-        res_idx = [1 for i=1:n]
-    end
-
-    if opt == 4 #both over rows and columns, no inner. This option can only be chosen manually. It seems to be far less efficient
-        # we want the blocks to be about square. So we need to find numbers a, b such that rows/a ≈ cols/b and a*b ≈ n
-        if size(C,1) == size(C,2) #square, so we take squareroot
-            sqrtn = isqrt(n) #integer squareroot, so sqrtn^2 < n probably. We
-            if sqrtn^2 != n
-                a = sqrtn
-                b = sqrtn+1
-            else
-                a = b = sqrtn
-            end
-        else
-            r = size(C,1)
-            c = size(C,2)
-            a = isqrt(div(n*r,c))
-            b = div(n,a)
-            #it is possible that we can increase a by one while keeping a*b <= n
-            a = max(a, div(n,b))
-        end
-        n = a*b #new n based on the partition
-
-        rsizes =  [div(size(C,1),a) for i=1:a] .+ [div(size(C,1),a)*a+i <= size(C,1) ? 1 : 0 for i=1:a]
-        ridxs = [0, cumsum(rsizes)...]
-        idx_rows_part = [ridxs[i]+1:ridxs[i+1] for i=1:a]
-
-        csizes =  [div(size(C,2),b) for i=1:b] .+ [div(size(C,2),b)*b+i <= size(C,2) ? 1 : 0 for i=1:b]
-        cidxs = [0, cumsum(csizes)...]
-        idx_cols_part = [cidxs[i]+1:cidxs[i+1] for i=1:b]
-
-        #final partition: iteration i does block C[idx_rows[i],idx_cols[i]]
-        idx_rows = [idx_rows_part[div(i,b)+1] for i=0:n-1]
-        idx_cols = [idx_cols_part[i%b+1] for i=0:n-1]
-
-        n_inner = 1
-        idx_inner = [1:size(A,2) for i=1:n]
-        res_idx = [1 for i=1:n]
-    end
-
-    # Do the threaded matrix multiplication
-    # We could use 1 matrix less if we use C with n_inner > 1 too.
-    if n_inner > 1
-        res_matrices = [T(size(C,1),size(C,2),prec=prec) for i=1:n_inner]
-    end
-    part_res = [T(length(idx_rows[i]),length(idx_cols[i]),prec=prec) for i=1:n] # when n_inner =1, this is max one copy of C
-    As = [A[idx_rows[i],idx_inner[i]] for i=1:n] #in total max n copies of A, but in total 1 copy if n_inner = 1
-    Bs = [B[idx_inner[i],idx_cols[i]] for i=1:n] # in total max n copies of B
-    Threads.@threads for i=1:n
-        # cur_res = T(length(idx_rows[i]),length(idx_cols[i]),prec=prec)
-        # I am not sure whether allocating inside a threaded loop + finalizers can give memory leakage.
-        # for ArbMatrices we would probably want to use the ref versions of the slice & set operations
-        # Arblib.approx_mul!(part_res[i],A[idx_rows[i],idx_inner[i]],B[idx_inner[i],idx_cols[i]]) #do we want to use a different mul here?
-        Arblib.approx_mul!(part_res[i],As[i],Bs[i])
-        if n_inner > 1 # race conditions if we set/add to C directly, so we set the parts
-            res_matrices[res_idx[i]][idx_rows[i],idx_cols[i]] = part_res[i]
-        else
-            C[idx_rows[i],idx_cols[i]] = part_res[i] # we actually would want to use a view/window of C[...,...] for the matrix product. But the Arblib window does not work nicely due to init/clear and normal view does not work with ArbMatrices.
-        end
-    end
-
-    #add the results if needed
-    if n_inner > 1
-        # this way we don't have to zero C, we do that implicitely.
-        # if n_inner>1, then we at least have 2 matrices to add
-        Arblib.add!(C,res_matrices[1],res_matrices[2],prec=prec)
-        for i=3:n_inner
-            Arblib.add!(C,C,res_matrices[i],prec=prec)
-        end
+        thread_func_right_window!(C,A,B,prec=prec)
+    elseif opt == 2
+        thread_func_left_window!(C,A,B,prec=prec)
+    elseif opt == 3
+        thread_func_inner_window!(C,A,B,prec=prec)
     end
     return C
 end
-function thread_func_right!(C::T,A::T,B::T,func!;n=Threads.nthreads(),prec=precision(C)) where T <: AbstractMatrix
+
+function thread_func_inner_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=precision(C)) where T <: Union{ArbMatrix, ArbRefMatrix}
     # distribute B over several cores and apply func!(C[part],A,B[part],prec=prec)
-    nc = size(B,2)
+    nc = size(B,1)
     sizes = [div(nc,n) for i=1:n] .+ [div(nc,n)*n+i <= nc ? 1 : 0 for i=1:n]
     idxs = [0, cumsum(sizes)...]
-    idx_cols = [idxs[i]+1:idxs[i+1] for i=1:n]
+    # idx_cols = [idxs[i]+1:idxs[i+1] for i=1:n]
 
-    parts_B = [B[:,idx_cols[i]] for i=1:n]
-    part_res = [T(size(C,1),length(idx_cols[i]),prec=prec) for i=1:n] # when n_inner =1, this is max one copy of C
+    parts_A = [T(0,0) for i=1:n]
+    parts_B = [T(0,0) for i=1:n]
+    part_res = [similar(C) for i=1:n] # when n_inner =1, this is max one copy of C
     Threads.@threads for i=1:n
-        func!(part_res[i],A,parts_B[i],prec=prec)
-        C[:,idx_cols[i]] = part_res[i]
+        Arblib.window_init!(parts_A[i], A, 0,idxs[i], size(A,1), idxs[i+1])
+        Arblib.window_init!(parts_B[i], B, idxs[i],0, idxs[i+1], size(B,2))
+        Arblib.approx_mul!(part_res[i],parts_A[i],parts_B[i],prec=prec)
+        Arblib.window_clear!(parts_A[i])
+        Arblib.window_clear!(parts_B[i])
+    end
+    Arblib.set!(C, part_res[1])
+    for i=2:n
+        Arblib.add!(C, C, part_res[i])
     end
 end
-
-function thread_func_left!(C::T,A::T,B::T,func!;n=Threads.nthreads(),prec=precision(C)) where T <: AbstractMatrix
+function thread_func_left_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=precision(C)) where T <: Union{ArbMatrix, ArbRefMatrix}
     # distribute B over several cores and apply func!(C[part],A,B[part],prec=prec)
     nr = size(A,1)
     sizes = [div(nr,n) for i=1:n] .+ [div(nr,n)*n+i <= nr ? 1 : 0 for i=1:n]
     idxs = [0, cumsum(sizes)...]
-    idx_rows = [idxs[i]+1:idxs[i+1] for i=1:n]
+    # idx_rows = [idxs[i]+1:idxs[i+1] for i=1:n]
 
-    parts_A = [A[idx_rows[i],:] for i=1:n]
-    part_res = [T(length(idx_rows[i]),size(C,2),prec=prec) for i=1:n] # when n_inner =1, this is max one copy of C
+    parts_A = [T(0,0) for i=1:n]
+    part_res = [T(0,0) for i=1:n] # when n_inner =1, this is max one copy of C
     Threads.@threads for i=1:n
-        func!(part_res[i],parts_A[i],B,prec=prec)
-        C[idx_rows[i],:] = part_res[i]
+        Arblib.window_init!(parts_A[i], A, idxs[i], 0, idxs[i+1], size(A,2))
+        Arblib.window_init!(part_res[i], C, idxs[i], 0, idxs[i+1], size(C,2))
+        Arblib.approx_mul!(part_res[i],parts_A[i],B,prec=prec)
+        Arblib.window_clear!(parts_A[i])
+        Arblib.window_clear!(part_res[i])
     end
 end
+
+function thread_func_right_window!(C::T,A::T,B::T; n =Threads.nthreads(), prec=precision(C)) where T <: Union{ArbMatrix, ArbRefMatrix}
+    # distribute B over several cores and apply func!(C[part],A,B[part],prec=prec)
+    nc = size(B,2)
+    sizes = [div(nc,n) for i=1:n] .+ [div(nc,n)*n+i <= nc ? 1 : 0 for i=1:n]
+    idxs = [0, cumsum(sizes)...]
+
+    parts_B = [T(0,0, prec=prec) for i=1:n]
+    part_res = [T(0,0,prec=prec) for i=1:n] # when n_inner =1, this is max one copy of C
+    Threads.@threads for i=1:n
+        Arblib.window_init!(parts_B[i], B, 0, idxs[i], size(B,1), idxs[i+1])
+        Arblib.window_init!(part_res[i], C, 0, idxs[i], size(C,1), idxs[i+1])
+        Arblib.approx_mul!(part_res[i],A,parts_B[i],prec=prec)
+        Arblib.window_clear!(parts_B[i])
+        Arblib.window_clear!(part_res[i])
+    end
+end
+
 
 function malloc_trim(k::Int)
     if Sys.islinux()
