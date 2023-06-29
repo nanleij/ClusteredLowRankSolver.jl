@@ -225,7 +225,8 @@ function thread_func_inner_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=prec
         Arblib.window_clear!(parts_A[i])
         Arblib.window_clear!(parts_B[i])
     end
-    for i=1:n
+    Arblib.set!(C, part_res[1])
+    for i=2:n
         Arblib.add!(C, C, part_res[i])
     end
 end
