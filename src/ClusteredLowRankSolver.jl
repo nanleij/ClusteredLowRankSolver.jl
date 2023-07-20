@@ -6,6 +6,7 @@ using KrylovKit
 
 export LowRankMat, LowRankMatPol, Block, Constraint, Objective,	 LowRankPolProblem, ClusteredLowRankSDP, solvesdp, approximatefekete, SampledMPolyElem, optimal
 export convert_to_prec, SolverFailure
+export check_problem, check_sdp!
 
 import LinearAlgebra: dot, transpose
 import Base: ==
@@ -17,5 +18,6 @@ include("tools.jl")
 include("threadinginfo.jl")
 include("solver.jl")
 include("approximate_fekete.jl") #I think this is better than having another auxiliary package
+include("checks.jl")
 
 end

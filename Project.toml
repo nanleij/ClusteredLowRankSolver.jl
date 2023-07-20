@@ -1,7 +1,7 @@
 name = "ClusteredLowRankSolver"
 uuid = "cadeb640-247c-4e6d-a8b8-270aef5e1f95"
 authors = ["nanleij <38724800+nanleij@users.noreply.github.com> and contributors"]
-version = "0.3.1"
+version = "0.3.2"
 
 [deps]
 AbstractAlgebra = "c3fe647b-3220-5bb0-a1ea-a7954cac585d"
@@ -14,7 +14,7 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
-AbstractAlgebra = "0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30"
+AbstractAlgebra = "0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31"
 Arblib = "0.6, 0.7, 0.8"
 BlockDiagonals = "0.1"
 GenericLinearAlgebra = "0.2, 0.3"

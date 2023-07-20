@@ -4,17 +4,11 @@
 
 struct LowRankMat
     eigenvalues::Vector{Arb}
-    leftevs::Vector{ArbRefMatrix}
     rightevs::Vector{ArbRefMatrix}
+    leftevs::Vector{ArbRefMatrix}
 end
 function LowRankMat(eigenvalues, eigenvectors)
     LowRankMat(eigenvalues, eigenvectors, eigenvectors)
-end
-
-Base.getindex(A::LowRankMat,i,j) = sum(A.eigenvalues[r] * A.leftevs[r][j] * A.rightevs[r][i] for r=1:length(A.eigenvalues))
-
-function Base.size(m::LowRankMat, i)
-    length(m.leftevs[1])
 end
 
 function convert_to_prec(A::LowRankMat,prec=precision(BigFloat))
@@ -26,7 +20,7 @@ function convert_to_prec(A::LowRankMat,prec=precision(BigFloat))
         Arblib.get_mid!(leftvecs[i],leftvecs[i])
         Arblib.get_mid!(rightvecs[i],rightvecs[i])
     end
-    return LowRankMat(evs,leftvecs,rightvecs)
+    return LowRankMat(evs,rightvecs,leftvecs)
 end
 function convert_to_prec(A::ArbRefMatrix,prec=precision(BigFloat))
     res = ArbRefMatrix(A,prec=prec)
@@ -159,19 +153,22 @@ polys = Union{MPolyElem, SampledMPolyElem, Real}
 """
     LowRankMatPol(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
 
-The matrix ``∑_i λ_i v_i w_i^T``.
+The matrix ``∑_i λ_i v_i w_i^T``, where v_i = rightevs[i] and w_i = leftevs[i]
 
 If `leftevs` is not specified, use `leftevs = rightevs`.
 """
 struct LowRankMatPol
     eigenvalues::Vector{polys}
-    leftevs::Vector{Vector{polys}}
     rightevs::Vector{Vector{polys}}
-    function LowRankMatPol(eigenvalues, leftevs, rightevs)
+    leftevs::Vector{Vector{polys}}
+    function LowRankMatPol(eigenvalues, rightevs, leftevs)
         if !(length(eigenvalues) == length(leftevs) == length(rightevs))
             error("LowRankMatPol should have the same number of values as vectors")
         end
-        new(eigenvalues,leftevs,rightevs)
+        if length(eigenvalues) == 0 || length(rightevs[1]) == 0
+            error("LowRankMatPol should not have an empty decomposition")
+        end
+        new(eigenvalues,rightevs, leftevs)
     end
 end
 
@@ -181,16 +178,26 @@ end
 
 LinearAlgebra.transpose(A::Union{LowRankMatPol,LowRankMat}) = typeof(A)(A.eigenvalues,A.rightevs,A.leftevs)
 
-Base.getindex(A::LowRankMatPol,i,j) = sum(A.eigenvalues[r] * A.leftevs[r][j] * A.rightevs[r][i] for r=1:length(A.eigenvalues))
+Base.getindex(A::Union{LowRankMat, LowRankMatPol},i,j) = sum(A.eigenvalues[r] * A.leftevs[r][j] * A.rightevs[r][i] for r=1:length(A.eigenvalues))
 
-function Base.size(m::LowRankMatPol, i)
-    length(m.leftevs[1])
+function Base.size(m::Union{LowRankMat,LowRankMatPol}, i)
+    if i == 1
+        return length(m.rightevs[1])
+    elseif i == 2 
+        return length(m.leftevs[1])
+    else
+        throw(ArgumentError("A $(typeof(m)) only has two dimensions"))
+    end
+end
+
+function Base.size(m::Union{LowRankMat,LowRankMatPol})
+    (size(m,1), size(m,2))
 end
 
 function evaluate(p::LowRankMatPol, sample; scaling = 1, prec=precision(BigFloat))
     LowRankMat([Arb(scaling*evaluate(v,sample), prec=prec) for v in p.eigenvalues],
-               [ArbRefMatrix([evaluate(v,sample) for v in w], prec=prec) for w in p.leftevs],
-               [ArbRefMatrix([evaluate(v,sample) for v in w], prec=prec) for w in p.rightevs])
+            [ArbRefMatrix([evaluate(v,sample) for v in w], prec=prec) for w in p.rightevs],
+            [ArbRefMatrix([evaluate(v,sample) for v in w], prec=prec) for w in p.leftevs])
 end
 
 function (p::LowRankMatPol)(sample...)
@@ -234,6 +241,10 @@ end
 
 function Block(l)
     Block(l, 1, 1)
+end
+
+function name(b::Block)
+    b.l
 end
 
 """
