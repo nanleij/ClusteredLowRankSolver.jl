@@ -488,9 +488,25 @@ function solvesdp(
     end
     catch e
         println("A(n) $(typeof(e)) occurred.")
+        if isa(e, CompositeException)
+            exception_found = false
+            for exception in e
+                if isa(exception, SolverFailure) || isa(exception, InterruptException)
+                    e = exception
+                    exception_found = true
+                    break
+                end
+            end
+            if exception_found
+                println("This was probably caused by $(typeof(e))")
+            else
+                @show e
+            end
+        end
         if hasfield(typeof(e),:msg)
             println(e.msg)
         end
+
         println("We return the current solution and optimality status.")
         error_code[1] = 1 #general errors
     end #of try/catch
@@ -1122,7 +1138,8 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
                         min_thread_size = div(size(vecs_right[j][l][r,s],2), used_threads)
                         # we add 1 to the first k threads such that all columns are being used
                         thread_sizes = [min_thread_size + (used_threads*min_thread_size + i <= size(vecs_right[j][l][r,s],2) ? 1 : 0) for i=1:used_threads]
-                        indices = [0, cumsum(thread_sizes)...]
+                        indices = unique([0, cumsum(thread_sizes)...])
+                        used_threads = length(indices)-1
                         result_parts = [ArbRefMatrix(1,indices[i+1]-indices[i],prec=precision(Z)) for i=1:used_threads]
 
                         #apply the matrix multiplications: ones * (V_l o (Z * V_r))

@@ -29,14 +29,14 @@ function delsarte(n, d,costheta, precision=512; all_free = false, kwargs...)
 
     #Construct the SOS problem: minimize the objective s.t. the constraint
     sos = LowRankPolProblem(false, objective, [constraint])
-
+    @assert check_problem(sos)
     #Construct the SDP with or without using free variables for the a_k
     if all_free
         sdp = ClusteredLowRankSDP(sos,as_free = [k for k=0:2d])
     else
         sdp = ClusteredLowRankSDP(sos)
     end
-
+    @assert check_sdp!(sdp)
     #Solve the SDP and return results
     return status, sol,time, errorcode = solvesdp(sdp; kwargs...)
 end
