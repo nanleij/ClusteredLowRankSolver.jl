@@ -125,7 +125,7 @@ which we can solve with
 This function has multiple options; see the section with solver [Options](@ref).
 
 ## Retrieving variables from the solution
-The solver outputs the solution `sol` in the form of a [`CLRSResults`](@ref) struct, which may be used to retrieve variables and the objective from the solver. In the following we want to obtain the (dual) objective of a solution, and the value of a free variable named `:a`.
+The solver outputs the solution `sol` in the form of a `CLRSResults` struct, which may be used to retrieve variables and the objective from the solver. In the following we want to obtain the (dual) objective of a solution, and the value of a free variable named `:a`.
 ```julia
     objective = sol.dual_objective
     a_value = sol.freevar[:a]

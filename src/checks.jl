@@ -87,6 +87,7 @@ end
 function is_empty(A::ArbRefMatrix)
     return size(A) == (0,0)
 end
+
 function check_mat(A::Union{LowRankMat, LowRankMatPol})
     #same number of vectors and values, same lengths of vectors
     correct = length(A.leftevs) == length(A.rightevs) == length(A.eigenvalues) && all(length(v) == length(A.leftevs[1]) == length(w)  for (v,w) in zip(A.leftevs, A.rightevs))
@@ -98,6 +99,8 @@ end
 check_mat(A::AbstractMatrix) = true
 
 """
+    check_sdp!(sdp::ClusteredLowRankSDP)
+
 Check whether the constraint matrices are symmetric, and remove empty constraint matrices.
 """
 function check_sdp!(sdp::ClusteredLowRankSDP)
@@ -108,6 +111,8 @@ function check_sdp!(sdp::ClusteredLowRankSDP)
 end
 
 """
+    check_problem(problem::LowRankPolProblem)
+
 Check for obvious mistakes in the constraints and objective
 """
 function check_problem(prob::LowRankPolProblem)

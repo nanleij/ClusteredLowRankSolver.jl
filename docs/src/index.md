@@ -50,5 +50,7 @@ Constraint
 LowRankMatPol
 Block
 approximatefekete
-CLRSResults
+check_problem
+check_sdp!
 ```
+
