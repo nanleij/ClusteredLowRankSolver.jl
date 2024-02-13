@@ -41,33 +41,33 @@ SampledMPolyRing(ring::T) where T<:AbstractAlgebra.Ring = SampledMPolyRing{elem_
 
 ==(a::SampledMPolyRing{T}, b::SampledMPolyRing{T}) where T = true # a.base_ring == b.base_ring TODO: this is a workaround
 
-struct SampledMPolyElem <: AbstractAlgebra.RingElem
+struct SampledMPolyRingElem <: AbstractAlgebra.RingElem
     evaluations::Dict
 end
 
-function SampledMPolyElem(p::MPolyElem, samples)
-    SampledMPolyElem(Dict(samples[s] => p(samples[s]...) for s in eachindex(samples)))
+function SampledMPolyRingElem(p::MPolyRingElem, samples)
+    SampledMPolyRingElem(Dict(samples[s] => p(samples[s]...) for s in eachindex(samples)))
 end
 
-function SampledMPolyElem(samples, values)
-    SampledMPolyElem(Dict(samples[s] => values[s] for s in eachindex(samples)))
+function SampledMPolyRingElem(samples, values)
+    SampledMPolyRingElem(Dict(samples[s] => values[s] for s in eachindex(samples)))
 end
 
-function evaluate(p::SampledMPolyElem, v)
+function evaluate(p::SampledMPolyRingElem, v)
     p.evaluations[v]
 end
 
-function (p::SampledMPolyElem)(v...)
+function (p::SampledMPolyRingElem)(v...)
     evaluate(p, collect(v))
 end
 
 # addition
-function Base.:+(p::SampledMPolyElem, q::SampledMPolyElem)
+function Base.:+(p::SampledMPolyRingElem, q::SampledMPolyRingElem)
     @assert keys(p.evaluations) == keys(q.evaluations)
-    SampledMPolyElem(Dict(sample => p.evaluations[sample] + q.evaluations[sample] for sample in keys(p.evaluations)))
+    SampledMPolyRingElem(Dict(sample => p.evaluations[sample] + q.evaluations[sample] for sample in keys(p.evaluations)))
 end
 
-function Base.:+(p::MPolyElem, q::SampledMPolyElem)
+function Base.:+(p::MPolyRingElem, q::SampledMPolyRingElem)
     r = copy(q)
     for s in keys(r.evaluations)
         r.evaluations[s] += p(s...)
@@ -75,25 +75,25 @@ function Base.:+(p::MPolyElem, q::SampledMPolyElem)
     r
 end
 
-function Base.:+(q::SampledMPolyElem, p::MPolyElem)
+function Base.:+(q::SampledMPolyRingElem, p::MPolyRingElem)
     p + q
 end
 
 # subtraction
-function Base.:-(q::SampledMPolyElem)
-    SampledMPolyElem(Dict(sample => -q.evaluations[sample] for sample in keys(q.evaluations)))
+function Base.:-(q::SampledMPolyRingElem)
+    SampledMPolyRingElem(Dict(sample => -q.evaluations[sample] for sample in keys(q.evaluations)))
 end
 
-function Base.:-(p::T, q::SampledMPolyElem) where T <: Union{SampledMPolyElem, MPolyElem}
+function Base.:-(p::T, q::SampledMPolyRingElem) where T <: Union{SampledMPolyRingElem, MPolyRingElem}
     p + (-q)
 end
 
-function Base.:-(p::SampledMPolyElem, q::MPolyElem)
+function Base.:-(p::SampledMPolyRingElem, q::MPolyRingElem)
     p + (-q)
 end
 
 # multiplication
-function Base.:*(p::MPolyElem, q::SampledMPolyElem)
+function Base.:*(p::MPolyRingElem, q::SampledMPolyRingElem)
     r = copy(q)
     for s in keys(r.evaluations)
         r.evaluations[s] *= p(s...)
@@ -101,7 +101,7 @@ function Base.:*(p::MPolyElem, q::SampledMPolyElem)
     r
 end
 
-function Base.:*(p::Union{AbstractFloat, Integer,Rational}, q::SampledMPolyElem)
+function Base.:*(p::Union{AbstractFloat, Integer,Rational}, q::SampledMPolyRingElem)
     r = copy(q)
     for s in keys(r.evaluations)
         r.evaluations[s] *= p
@@ -109,15 +109,15 @@ function Base.:*(p::Union{AbstractFloat, Integer,Rational}, q::SampledMPolyElem)
     r
 end
 
-function Base.:*(q::SampledMPolyElem,p::Union{AbstractFloat, Integer,Rational})
+function Base.:*(q::SampledMPolyRingElem,p::Union{AbstractFloat, Integer,Rational})
     p * q
 end
 
-function Base.:*(q::SampledMPolyElem, p::MPolyElem)
+function Base.:*(q::SampledMPolyRingElem, p::MPolyRingElem)
     p * q
 end
 
-function Base.:*(p::SampledMPolyElem, q::SampledMPolyElem)
+function Base.:*(p::SampledMPolyRingElem, q::SampledMPolyRingElem)
     @assert keys(p.evaluations) == keys(q.evaluations)
     r = copy(q)
     for s in keys(r.evaluations)
@@ -126,8 +126,8 @@ function Base.:*(p::SampledMPolyElem, q::SampledMPolyElem)
     r
 end
 
-function Base.copy(q::SampledMPolyElem)
-    SampledMPolyElem(copy(q.evaluations))
+function Base.copy(q::SampledMPolyRingElem)
+    SampledMPolyRingElem(copy(q.evaluations))
 end
 
 """
@@ -140,7 +140,7 @@ This preserves a degree ordering of `basis` if present.
 """
 function approximatefekete(basis, samples;show_det=false,s=3)
     V, P, samples = approximate_fekete(samples, basis,show_det=show_det,s=s)
-    [SampledMPolyElem(samples, V[:,p]) for p in eachindex(basis)], samples
+    [SampledMPolyRingElem(samples, V[:,p]) for p in eachindex(basis)], samples
 end
 
 
@@ -148,7 +148,7 @@ end
 ### Low rank matrix polynomials ###
 ###################################
 
-polys = Union{MPolyElem, SampledMPolyElem, Real}
+polys = Union{MPolyRingElem, SampledMPolyRingElem, Real}
 
 """
     LowRankMatPol(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
@@ -257,9 +257,9 @@ Models a polynomial constaint of the form
 with samples, where `r,s` are defined by the `Block` structure with `l` as first argument
 
 Arguments:
-  - `constant::MPolyElem`
+  - `constant::MPolyRingElem`
   - `matrixcoeff::Dict{Block, LowRankMatPol}`
-  - `freecoeff::Dict{Any, MPolyElem}`
+  - `freecoeff::Dict{Any, MPolyRingElem}`
   - `samples::Vector{Vector}`
   - `scalings::Vector`
 """
@@ -278,7 +278,7 @@ Constraint(constant,matrixcoeff,freecoeff) = Constraint(constant,matrixcoeff,fre
 """
     Objective(constant, matrixcoeff::Dict{Block, Matrix}, freecoeff::Dict)
 
-The objective for the LowRankPolProblem
+The objective for the Problem
 """
 struct Objective
     constant
@@ -287,11 +287,11 @@ struct Objective
 end
 
 """
-    LowRankPolProblem(maximize, objective, constraints)
+    Problem(maximize, objective, constraints)
 
 Combine the objective and constraints into a low-rank polynomial problem
 """
-struct LowRankPolProblem #Maybe we  need to rename this to e.g. LowRankPolProblem
+struct Problem
     maximize::Bool
     objective::Objective
     constraints::Vector{Constraint}
@@ -320,9 +320,9 @@ function ClusteredLowRankSDP(maximize,constant,A,B,c,C,b)
 end
 
 """
-    ClusteredLowRankSDP(sos::LowRankPolProblem; as_free::Vector, prec, verbose])
+    ClusteredLowRankSDP(sos::Problem; as_free::Vector, prec, verbose])
 
-Define a ClusteredLowRankSDP based on the LowRankPolProblem sos.
+Define a ClusteredLowRankSDP based on the Problem sos.
 
 The PSD variables defined by the keys in the vector `as_free` will be modelled as extra free variables,
 with extra constraints to ensure that they are equal to the entries of the PSD variables.
@@ -330,7 +330,7 @@ Remaining keyword arguments:
   - `prec` (default: precision(BigFloat)) - the precision of the result
   - `verbose` (default: false) -  print progress to the standard output
 """
-function ClusteredLowRankSDP(sos::LowRankPolProblem; as_free = [], prec=precision(BigFloat),verbose = false)
+function ClusteredLowRankSDP(sos::Problem; as_free = [], prec=precision(BigFloat),verbose = false)
     # the blocks in as_free will be modelled as extra variables
     if length(as_free) > 0
         if verbose
@@ -672,6 +672,10 @@ struct CLRSResults
     # matrix_coeff_names::Vector{Vector{Any}}
     # free_coeff_names::Vector{Any}
     # status::Status #optimal, near optimal, primal feasible, dual feasible, feasible (p&d),not converged
+    function CLRSResults(x, X, y, Y, primal_objective, dual_objective, matrixvar::Dict, freevar::Dict)
+        Base.depwarn("The type 'CLRSResults' will be deprecated in a future release. Please use PrimalSolution and DualSolution instead", :CLRSResults)
+        new(x, X, y, Y, primal_objective, dual_objective, matrixvar, freevar)
+    end
 end
 function CLRSResults(x,X,y,Y, primal_objective,dual_objective, matrix_coeff_names::Vector, free_coeff_names::Vector)
     #convert to

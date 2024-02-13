@@ -8,7 +8,7 @@ function delsarte(n, d,costheta, precision=512; all_free = false, kwargs...)
     #set up the polynomial field
     setprecision(precision)
     FF = RealField
-    P, (u, ) = PolynomialRing(FF, ["u"])
+    P, (u, ) = polynomial_ring(FF, ["u"])
 
     #compute both the gegenbauer polynomials and the sos basis
     gbasis = basis_gegenbauer(2d, n, u)
@@ -45,7 +45,7 @@ function delsarte_highrank(n, d,costheta, precision=512; all_free = false, kwarg
     #set up the polynomial field
     setprecision(precision)
     FF = RealField
-    P, (u, ) = PolynomialRing(FF, ["u"])
+    P, (u, ) = polynomial_ring(FF, ["u"])
 
     #compute both the gegenbauer polynomials and the sos basis
     gbasis = basis_gegenbauer(2d, n, u)
@@ -103,7 +103,7 @@ function Nspherical_cap_packing(n,d,thetas,N = length(thetas),precision=precisio
     FF = RealField
     w = weights.(thetas,n)
 
-    P, (u, ) = PolynomialRing(FF, ["u"])
+    P, (u, ) = polynomial_ring(FF, ["u"])
     basis = basis_gegenbauer(2d, n, u)
 
     constraints = []

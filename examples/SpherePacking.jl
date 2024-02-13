@@ -26,7 +26,7 @@ function Nsphere_packing(n,d,r,N=length(r),prec=512; ret_sdp = false, scaling_fu
     #       0 - sum_k a_ijk k! pi^-k L_k^{n/2-1}(pi x) >=0          (G = {1,x - (r_i + r_j)^2}) (1x1)
     #       M - sum_k a_iik k!/pi^k L_k^{n/2-1}(0) >= 0 for i=1:N   G = {1}, 1x1
     setprecision(BigFloat,prec)
-    R, (x,) = PolynomialRing(RealField,["x"])
+    R, (x,) = polynomial_ring(RealField,["x"])
 
     #Constraint 1: - (vol B(r_i)^1/2 vol B(r_j)^1/2 )_{ij=1}^N + \sum_i \sum_j a_{ij,0} E_ij is PSD. So -a_ijk + PSD_ij = -(vol B(r_i) vol B(r_j)_^1/2
     con1 = []
@@ -145,7 +145,7 @@ function cohnelkies(n,d,r=1;scale_var_fun = k->1, prec=512, model_prec=prec,ret_
     # CohnElkies.jl models the problem for 2d+1, and then one of the PSD matrices is zero. We do that now too.
     setprecision(BigFloat,model_prec)
 
-    R, (x,) = PolynomialRing(RealField,["x"])
+    R, (x,) = polynomial_ring(RealField,["x"])
 
     q = basis_laguerre(2d+1, BigFloat(n) / 2 - 1, BigFloat(2 * pi) * x)
     max_coef = [max(coefficients(q[i])...) for i = 1:length(q)]

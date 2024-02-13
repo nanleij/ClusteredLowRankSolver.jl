@@ -6,7 +6,7 @@ export three_point_spherical_cap
 
 
 function Q(n::Int, k::Int, u, v, t)
-    R, x = PolynomialRing(RealField, "x")
+    R, x = polynomial_ring(RealField, "x")
     p = basis_gegenbauer(k, n, x)[end]
     sum(coeff(p, i) * ((1-u^2)*(1-v^2))^div(k-i, 2)*(t-u*v)^i for i=0:length(p)-1)
 end
@@ -25,7 +25,7 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
     setprecision(BigFloat,prec)
     FF = RealField
 
-    R, (u,v,t) = PolynomialRing(FF, ["u","v","t"])
+    R, (u,v,t) = polynomial_ring(FF, ["u","v","t"])
     if verbose
         println("Creating the polynomials for F_k...")
     end
@@ -50,7 +50,7 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
         p(u,costheta)*p(v,costheta)*p(t,costheta),
         2u*v*t + 1 - u^2 - v^2 - t^2]
     #The basis in 1 variable used for the symmetric basis
-    R1, (x,) = PolynomialRing(FF,["x"])
+    R1, (x,) = polynomial_ring(FF,["x"])
     if basis == 1
         basis1d_sym = m(x, 2d)
     elseif basis == 2
@@ -116,7 +116,7 @@ function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; bas
     if verbose
         println("Creating the univariate constraint")
     end
-    W, (w,) = PolynomialRing(FF, ["w"])
+    W, (w,) = polynomial_ring(FF, ["w"])
     f = Dict()
     for k=0:d # F(u,u,1)
         # from the (normally) three vu^T items, we only need 2 if we sum the ones with common u^T
@@ -164,7 +164,7 @@ function three_point_spherical_cap_highrank(n, d, costheta, prec=256, all_free=f
     setprecision(BigFloat,prec)
     FF = RealField
 
-    R, (u,v,t) = PolynomialRing(FF, ["u","v","t"])
+    R, (u,v,t) = polynomial_ring(FF, ["u","v","t"])
     if verbose
         println("Creating the polynomials for F_k...")
     end
@@ -190,7 +190,7 @@ function three_point_spherical_cap_highrank(n, d, costheta, prec=256, all_free=f
         p(u,costheta)*p(v,costheta)*p(t,costheta),
         2u*v*t + 1 - u^2 - v^2 - t^2]
     #The basis in 1 variable used for the symmetric basis
-    R1, (x,) = PolynomialRing(FF,["x"])
+    R1, (x,) = polynomial_ring(FF,["x"])
     if basis == 1
         basis1d_sym = m(x, 2d)
     elseif basis == 2
@@ -256,7 +256,7 @@ function three_point_spherical_cap_highrank(n, d, costheta, prec=256, all_free=f
     if verbose
         println("Creating the univariate constraint")
     end
-    W, (w,) = PolynomialRing(FF, ["w"])
+    W, (w,) = polynomial_ring(FF, ["w"])
     f = Dict()
     for k=0:d # F(u,u,1)
         mat = Q(n-1,k,w,1,w) .* ( m(w,d-k) * transpose(m(1,d-k)) + m(1,d-k) * transpose(m(w,d-k)))

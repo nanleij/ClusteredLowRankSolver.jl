@@ -14,7 +14,7 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
-AbstractAlgebra = "0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32, 0.33"
+AbstractAlgebra = "0.34 - 0.38"
 Arblib = "0.6, 0.7, 0.8"
 BlockDiagonals = "0.1"
 GenericLinearAlgebra = "0.2, 0.3"

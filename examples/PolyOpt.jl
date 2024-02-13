@@ -17,7 +17,7 @@ function min_f(d)
     obj = Objective(0, Dict(), Dict(:M => 1))
 
     FF = RealField
-    R, (x,y,z) = PolynomialRing(FF, ["x", "y", "z"])
+    R, (x,y,z) = polynomial_ring(FF, ["x", "y", "z"])
     # The polynomial f:
     f =  x^4 + y^4 + z^4 - 4x*y*z + x + y + z
 

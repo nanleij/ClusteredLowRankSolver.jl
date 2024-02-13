@@ -36,7 +36,7 @@ using Test
 
     @testset "SampledMPolyElem" begin #this is mostly tested through the examples too
         using AbstractAlgebra
-        R, (x,) = PolynomialRing(RealField, ["x"])
+        R, (x,) = polynomial_ring(RealField, ["x"])
         p1 = x^2 + 2
         samples = [[i] for i=0:10]
         p2 = ClusteredLowRankSolver.SampledMPolyElem(p1,samples)
@@ -59,7 +59,7 @@ using Test
 
     @testset "LowRankMat(Pol)" begin
         using AbstractAlgebra
-        R, (x,) = PolynomialRing(RealField, ["x"])
+        R, (x,) = polynomial_ring(RealField, ["x"])
         A = LowRankMatPol([x],[[x^2,x^3]]) # the matrix [x^5 x^6; x^6 x^7]
         B = A(2)
         @test [B[i,j] for i=1:2,j=1:2] == [2^5 2^6; 2^6 2^7]
