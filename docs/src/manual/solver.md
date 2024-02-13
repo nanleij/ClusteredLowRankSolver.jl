@@ -96,7 +96,7 @@ Although unwanted, errors can be part of the output as well. The error codes giv
 
 ## Multithreading
 The solver supports multithreading. This can be used by starting `julia` with
-```julia
+```
 julia -t n
 ```
 where `n` denotes the number of threads.

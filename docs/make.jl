@@ -2,13 +2,16 @@ using Documenter
 push!(LOAD_PATH,"../src/")
 using ClusteredLowRankSolver
 using DocumenterCitations
+using Bibliography
 
-bib = CitationBibliography(joinpath(@__DIR__, "references.bib"), sorting=:nyt)
+bib = CitationBibliography(joinpath(@__DIR__, "references.bib"))
 
-makedocs(bib,
+sort_bibliography!(bib.entries, :nyt)
+
+makedocs(plugins=[bib],
     sitename = "ClusteredLowRankSolver.jl Documentation",
     format = Documenter.HTML(),
-    modules = [ClusteredLowRankSolver],
+    # modules = [ClusteredLowRankSolver], #we don't want all the doc strings in the documentation
     pages = [
         "Home" => "index.md",
         "Manual" => [
