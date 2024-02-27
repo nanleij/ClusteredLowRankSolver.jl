@@ -2,7 +2,7 @@
 ### Missing functions ###
 #########################
 
-Base.precision(::AbstractAlgebra.Floats{BigFloat}) = precision(BigFloat)
+Base.precision(::Nemo.AbstractAlgebra.Floats{BigFloat}) = precision(BigFloat)
 
 evaluate(a::Rational{Int}, x) = a
 
@@ -13,7 +13,7 @@ evaluate(a::Rational{Int}, x) = a
 ### Completely sampled polynomials ###
 ######################################
 
-struct SampledMPolyRing{T} <: AbstractAlgebra.Ring
+struct SampledMPolyRing{T} <: Nemo.Ring
     base_ring
     samples
     function SampledMPolyRing(base_ring, samples)
@@ -25,7 +25,7 @@ end
 
 ==(a::SampledMPolyRing, b::SampledMPolyRing) = a.base_ring == b.base_ring && a.samples == b.samples
 
-struct SampledMPolyRingElem{T} <: AbstractAlgebra.RingElem
+struct SampledMPolyRingElem{T} <: Nemo.RingElem
     parent::SampledMPolyRing{T}
     evaluations::AbstractVector{T}
 end
@@ -41,12 +41,12 @@ function Base.deepcopy_internal(q::SampledMPolyRingElem, d::IdDict)
     return newq
 end
 
-AbstractAlgebra.elem_type(::Type{SampledMPolyRing{T}}) where T = SampledMPolyRingElem{T}
-AbstractAlgebra.parent_type(::Type{SampledMPolyRingElem{T}}) where T = SampledMPolyRing{T}
+Nemo.elem_type(::Type{SampledMPolyRing{T}}) where T = SampledMPolyRingElem{T}
+Nemo.parent_type(::Type{SampledMPolyRingElem{T}}) where T = SampledMPolyRing{T}
 
 Base.parent(p::SampledMPolyRingElem) = p.parent
 
-AbstractAlgebra.base_ring(R::SampledMPolyRing) = R.base_ring
+Nemo.base_ring(R::SampledMPolyRing) = R.base_ring
 
 (R::SampledMPolyRing{T})(x) where T = SampledMPolyRingElem{T}(R,[R.base_ring(x) for _ in R.samples])
 (R::SampledMPolyRing{T})() where T = R(0)
@@ -73,7 +73,7 @@ end
 Base.iszero(p::SampledMPolyRingElem{T}) where T = all(iszero, p.evaluations)
 Base.isone(p::SampledMPolyRingElem{T}) where T = all(isone, p.evaluations)
 
-AbstractAlgebra.canonical_unit(p::SampledMPolyRingElem) = one(p)
+Nemo.canonical_unit(p::SampledMPolyRingElem) = one(p)
 
 function show(io::IO, R::SampledMPolyRing)
     print(io, "Sampled polynomials in $(length(first(R.samples))) variables over ")
@@ -174,14 +174,14 @@ function Base.:^(p::SampledMPolyRingElem, n::Int)
 end
 
 #unsafe operators
-function AbstractAlgebra.zero!(q::SampledMPolyRingElem)
+function Nemo.zero!(q::SampledMPolyRingElem)
     for i in eachindex(q.evaluations)
         q.evaluations[i] = zero(base_ring(parent(q)))
     end
     return q
 end
 
-function AbstractAlgebra.mul!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}, r::SampledMPolyRingElem{T}) where T
+function Nemo.mul!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}, r::SampledMPolyRingElem{T}) where T
     parent(p) == parent(q) == parent(r) || error("Incompatible rings")
     for i in eachindex(p.evaluations)
         p.evaluations[i] = q.evaluations[i] * r.evaluations[i]
@@ -189,7 +189,7 @@ function AbstractAlgebra.mul!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingEle
     return p
 end
 
-function AbstractAlgebra.add!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}, r::SampledMPolyRingElem{T}) where T
+function Nemo.add!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}, r::SampledMPolyRingElem{T}) where T
     parent(p) == parent(q) == parent(r) || error("Incompatible rings")
     for i in eachindex(p.evaluations)
         p.evaluations[i] = q.evaluations[i] + r.evaluations[i]
@@ -197,7 +197,7 @@ function AbstractAlgebra.add!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingEle
     return p
  end
 
- function AbstractAlgebra.addeq!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}) where T
+ function Nemo.addeq!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}) where T
     parent(p) == parent(q) || error("Incompatible rings")
     for i in eachindex(p.evaluations)
         p.evaluations[i] += q.evaluations[i]
@@ -309,15 +309,15 @@ function Arblib.ArbRefMatrix(m::Vector; prec=precision(BigFloat))
     nm
 end
 
-AbstractAlgebra.evaluate(p::Int, s) = p
+Nemo.evaluate(p::Int, s) = p
 
-function AbstractAlgebra.evaluate(p::LowRankMatPol, sample; scaling=1)
+function Nemo.evaluate(p::LowRankMatPol, sample; scaling=1)
     LowRankMatPol([scaling*evaluate(v, sample) for v in p.eigenvalues],
                [[evaluate(v, sample) for v in w] for w in p.leftevs],
                [[evaluate(v, sample) for v in w] for w in p.rightevs])
 end
 
-function AbstractAlgebra.evaluate(p::Matrix, sample::Vector{T}; scaling=1) where T
+function Nemo.evaluate(p::Matrix, sample::Vector{T}; scaling=1) where T
     res = [evaluate(p[i, j], sample) for i=1:size(p, 1), j=1:size(p, 2)]
     scaling * res
 end

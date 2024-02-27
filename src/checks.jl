@@ -115,7 +115,7 @@ end
 
 Check for obvious mistakes in the constraints and objective
 """
-function check_problem(prob::LowRankPolProblem)
+function check_problem(prob::Problem)
     everythingokay = true
     #perform checks on the problem
     for c in prob.constraints
@@ -127,7 +127,7 @@ end
 """
 Check whether the objective uses variables that are also used in the constriants
 """
-function check_objective(prob::LowRankPolProblem)
+function check_objective(prob::Problem)
     all_found = true
     for p in keys(prob.objective.matrixcoeff)
         key_found = false

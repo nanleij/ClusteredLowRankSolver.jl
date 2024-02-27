@@ -44,19 +44,19 @@ function solvesdp(
     threadinginfo::ThreadingInfo=ThreadingInfo(sdp); # the order of j and (j,l) used for threading
     prec=precision(BigFloat), # The precision used in the algorithm.
     maxiterations=500,
-    beta_infeasible=Arb(3, prec=prec)/10, # try to decrease mu by this factor when infeasible
-    beta_feasible = Arb(1, prec=prec)/10, # try to decrease mu by this factor when feasible
-    gamma=Arb(9,prec=prec) / 10, # this fraction of the maximum possible step size is used
-    omega_p=Arb(10,prec=prec)^(10), # initial size of the primal PSD variables
-    omega_d=Arb(10,prec=prec)^(10), # initial size of the dual PSD variables
-    duality_gap_threshold=Arb(10,prec=prec)^(-15), # how near to optimal does the solution need to be
-    primal_error_threshold=Arb(10,prec=prec)^(-30),  # how feasible does the primal solution need to be
-    dual_error_threshold=Arb(10,prec=prec)^(-30), # how feasible does the dual solution need to be
-    max_complementary_gap=Arb(10,prec=prec)^100, # the maximum of <X,Y>/#rows(X)
+    beta_infeasible=3//10, # try to decrease mu by this factor when infeasible
+    beta_feasible = 1//10, # try to decrease mu by this factor when feasible
+    gamma=9//10, # this fraction of the maximum possible step size is used
+    omega_p=big(10)^(10), # initial size of the primal PSD variables #TODO: define one omega to be the same as the other?
+    omega_d=big(10)^(10), # initial size of the dual PSD variables
+    duality_gap_threshold=1e-15, # how near to optimal does the solution need to be
+    primal_error_threshold=1e-30,  # how feasible does the primal solution need to be
+    dual_error_threshold=1e-30, # how feasible does the dual solution need to be
+    max_complementary_gap=big(10)^100, # the maximum of <X,Y>/#rows(X)
     need_primal_feasible=false, # terminate when the solution is primal feasible
     need_dual_feasible=false, # terminate when the solution is dual feasible
     verbose = true, # false: print nothing, true: print information after each iteration
-    step_length_threshold=Arb(10,prec=prec)^(-7), # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
+    step_length_threshold=1e-7, # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
     primalsol::Union{Nothing,PrimalSolution}=nothing,
     dualsol::Union{Nothing,DualSolution}=nothing,
     correctoronly=false,
@@ -75,7 +75,7 @@ function solvesdp(
 
     # convert to Arbs & the required precision:
     omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, primal_error_threshold, dual_error_threshold =
-        Arb.([omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, primal_error_threshold, dual_error_threshold], prec=prec)
+        AL.Arb.([omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, primal_error_threshold, dual_error_threshold], prec=prec)
     # The algorithm:
     # initialize:
         # 1): choose initial point q = (0, Ω_p*I, 0, Ω_d*I) = (x,X,y,Y), with Ω>0
@@ -209,7 +209,7 @@ function solvesdp(
             "iter","time(s)","μ","P-obj","D-obj","gap","P-error","p-error","d-error","α_p","α_d","beta"
         )
 	end
-    alpha_p = alpha_d = Arb(0, prec=prec)
+    alpha_p = alpha_d = AL.Arb(0, prec=prec)
     mu = dot(X, Y) / size(X, 1)
     # Preallocation. In principle we can collect them in a struct or something like that and use them that way.
 	# Then we only need to give e.g. Variables and Preallocated to functions instead of e.g. P,p,d, dX,dY,dx,dy
@@ -338,7 +338,7 @@ function solvesdp(
         r = (dot(X, Y) + dot(X, dY) + dot(dX, Y) + dot(dX, dY)) / (mu * size(X, 1)) 
         beta = r < 1 ? r^2 : r
         beta_c =
-            pd_feas ? min(max(beta_feasible, beta), Arb(1, prec=prec)) :
+            pd_feas ? min(max(beta_feasible, beta), AL.Arb(1, prec=prec)) :
             max(beta_infeasible, beta)
         mu_c = beta_c * mu
 
@@ -469,6 +469,21 @@ function solvesdp(
     end
     catch e
         println("A(n) $(typeof(e)) occurred.")
+        if isa(e, CompositeException)
+            exception_found = false
+            for exception in e
+                if isa(exception, SolverFailure) || isa(exception, InterruptException)
+                    e = exception
+                    exception_found = true
+                    break
+                end
+            end
+            if exception_found
+                println("This was probably caused by $(typeof(e))")
+            else
+                @show e
+            end
+        end
         if hasfield(typeof(e),:msg)
             println(e.msg)
         end
@@ -624,7 +639,7 @@ end
 
 """Compute the error (max abs (P_ij)) of a blockdiagonal matrix"""
 function compute_error(P::BlockDiagonal)
-    max_P = Arb(0, prec=precision(P))
+    max_P = AL.Arb(0, prec=precision(P))
     for b in P.blocks
         Arblib.max!(max_P, compute_error(b), max_P)
     end
@@ -633,8 +648,8 @@ end
 
 """Compute the error (max abs(d_ij)) of an ArbMatrix"""
 function compute_error(d::ArbRefMatrix)
-    max_d = Arb(0, prec=precision(d))
-    abs_temp = Arb(0, prec=precision(d))
+    max_d = AL.Arb(0, prec=precision(d))
+    abs_temp = AL.Arb(0, prec=precision(d))
     for i = 1:size(d, 1)
         for j = 1:size(d, 2)
             Arblib.max!(max_d, max_d, Arblib.abs!(abs_temp,d[i,j]))
@@ -667,7 +682,7 @@ end
 
 """Compute <c,x> where c is distributed over constraints"""
 function dot_c(sdp, x)
-    res = Arb(0, prec = precision(x))
+    res = AL.Arb(0, prec = precision(x))
     x_idx = 1
     for j = 1:length(sdp.c)
         for i = 1:length(sdp.c[j])
@@ -996,7 +1011,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                         # We need collect to combine keys(Dict()) with @threads, since @threads need an ordering and the keys are unordered
                         Threads.@threads for p in collect(keys(sdp.A[j][l][r1,s1]))
                             #NOTE: for high p, we do less q. So this may not be very well balanced. the order through keys may be kind of random, so this may be a better ordering than sorted
-                            tot = Arb(prec=prec)
+                            tot = AL.Arb(prec=prec)
                             for r2=1:size(sdp.A[j][l],1)
                                 for s2=1:size(sdp.A[j][l],2)
                                     for q in keys(sdp.A[j][l][r2,s2])
@@ -1108,7 +1123,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(Z))
     Arblib.zero!(result)
     #result has one entry for each (j,p) tuple
-    res = Arb(prec=precision(Z)) #we use this every iteration, but we set it to zero when needed
+    res = AL.Arb(prec=precision(Z)) #we use this every iteration, but we set it to zero when needed
     j_idx = 0 #the offset of the constraint index depending on the cluster
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
@@ -1202,7 +1217,7 @@ function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks)
                         # prnk_to_index = Dict((p,rnk)=>i for (i,(p,rnk)) in enumerate(index_to_prnk))
                         idx = 1
                         for p in collect(keys(sdp.A[j][l][r,s])) # We need collect to use @threads with keys(Dict())
-                            tot = Arb(0,prec=precision(Y))
+                            tot = AL.Arb(0,prec=precision(Y))
                             for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
                                 #contribution for this p is
                                 Arblib.addmul!(tot,A_Y[j][l][r,s][idx,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
@@ -1243,7 +1258,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
             else              
                 delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
                 #initialize the scratch spaces
-                cur = Arb(1,prec=precision(a))
+                cur = AL.Arb(1,prec=precision(a))
                 vec = ArbRefMatrix(delta,1,prec=precision(a))
                 
                 for r = 1:size(sdp.A[j][l],1)
@@ -1444,7 +1459,7 @@ function compute_step_length(
     prec = precision(M) #*2 #test if increasing the precision in this part of the code helps for the rest
     # We parallellize over j and l, but need the total minimum. We save the minimum for every (j,l)
     # We actually just need to keep track of the minimum for every thread, but it doesn't matter much
-    min_eig_arb = [[Arb(Inf, prec=precision(M)) for l in eachindex(M.blocks[j].blocks)] for j in eachindex(M.blocks)]
+    min_eig_arb = [[AL.Arb(Inf, prec=precision(M)) for l in eachindex(M.blocks[j].blocks)] for j in eachindex(M.blocks)]
     Threads.@threads for (j,l) in threadinginfo.jl_order
         #@show M
         #@show dM
@@ -1473,7 +1488,7 @@ function compute_step_length(
             values, vecs, info = eigsolve(Float64.(tempX[2].blocks[j].blocks[l]), 1, :SR; krylovdim = 10, maxiter = min(100,size(tempX[2].blocks[j].blocks[l],1)),tol=10^-5, issymmetric=true, eager=true)
 
             if info.converged >= 1
-                min_eig_arb[j][l] = Arb(values[1],prec=prec) - 10^-5 #tolerance, so this surely is smaller than the minimum eigenvector
+                min_eig_arb[j][l] = AL.Arb(values[1],prec=prec) - 10^-5 #tolerance, so this surely is smaller than the minimum eigenvector
                 continue
             end
 
@@ -1485,7 +1500,7 @@ function compute_step_length(
             if succes2 == 0 #even in this case it is possible that the output is accurate enough. But that is difficult to detect. Anyway, the cholesky for S or Q usually fail first
                 throw(SolverFailure("The eigenvalues could not be computed during the computation of the step length. Please try again with a higher precision."))
             else
-                real_arb = Arb(0, prec = prec)
+                real_arb = AL.Arb(0, prec = prec)
                 for i = 1:length(eigenvalues)
                     Arblib.get_real!(real_arb, eigenvalues[i])
                     Arblib.min!(min_eig_arb[j][l],real_arb,min_eig_arb[j][l])
@@ -1501,8 +1516,8 @@ function compute_step_length(
 
 
     if min_eig > -gamma # 1 is the maximum step length
-        return Arb(1, prec = prec)
+        return AL.Arb(1, prec = prec)
     else
-        return Arb(-gamma / min_eig, prec = prec)
+        return AL.Arb(-gamma / min_eig, prec = prec)
     end
 end
