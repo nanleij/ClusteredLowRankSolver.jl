@@ -3,30 +3,31 @@ if !isdefined(@__MODULE__, :ColumnNorm)
     ColumnNorm() = Val(true)
 end
 
-function approximate_fekete(initial_points, basis;prec=precision(BigFloat), show_det = false, s = 3,alg=[:BigFloat, :Arb, :high_prec][2])
+function approximate_fekete(initial_points, basis;prec=precision(BigFloat), verbose=false, show_det = false, s = 3,alg=[:BigFloat, :Arb, :high_prec][2])
     # P contains the basis transformation from the monomial basis to the new basis. 
     # the returned V,P are BigFloats. Otherwise it doesn't work with for example ArbField
     # This destroys the use of error bounds though.
-    print("Evaluating polynomials... ")
+    verbose && print("Evaluating polynomials... ")
     t = @elapsed V = [pol(point...) for point in initial_points, pol in basis]
-    println(t)
+    verbose && println(t)
     if alg == :BigFloat
-        V, P, point_indices = approximate_fekete_bigfloat(V,s=s,show_det=show_det,prec=prec)
+        V, P, point_indices = approximate_fekete_bigfloat(V, s=s, show_det=show_det, prec=prec, verbose=verbose)
     elseif alg == :Arb
-        V, P, point_indices = approximate_fekete_arb(V,s=s,show_det=show_det,prec=prec)
+        V, P, point_indices = approximate_fekete_arb(V, s=s, show_det=show_det, prec=prec, verbose=verbose)
     elseif alg == :high_prec
-        V, P, point_indices = approximate_fekete_highprec(V,s=s,show_det=show_det,prec=prec)
+        V, P, point_indices = approximate_fekete_highprec(V, s=s, show_det=show_det, prec=prec)
     end
     p = sortperm(initial_points[point_indices])
     return V[p,:], P, initial_points[point_indices][p]
 end
 
-function approximate_fekete_bigfloat(V; s = 3, show_det = false,prec=precision(BigFloat))
+function approximate_fekete_bigfloat(V; s = 3, verbose=false, show_det = false,prec=precision(BigFloat))
     setprecision(BigFloat, prec) do
 
         # we do the QR factorizations in floating point precision, and the basis changes in high precision (BigFloats)
         P = Matrix{BigFloat}(I, size(V, 2), size(V, 2)) # to keep track of the basis change
         for k = 1:s
+            verbose && println("QR iteration $k / $s")
             F = qr(Float64.(V))
             U = BigFloat.(I / F.R)
             V = V * U # should be approximately equal to Q
@@ -47,16 +48,16 @@ function approximate_fekete_bigfloat(V; s = 3, show_det = false,prec=precision(B
     end
 end
 
-function approximate_fekete_arb(V::Matrix{T}; s = 3,show_det = false,prec=precision(BigFloat)) where T
+function approximate_fekete_arb(V::Matrix{T}; verbose=false, s = 3,show_det = false,prec=precision(BigFloat)) where T
     setprecision(BigFloat, prec) do
         # We do the QR factorizations in floating point precision, and the basis changes in high precision (Arb)
-        V = ArbMatrix(BigFloat.(V),prec=prec)
-        P = ArbMatrix(size(V, 2), size(V, 2),prec=prec) # to keep track of the basis change
+        V = AL.ArbMatrix(BigFloat.(V),prec=prec)
+        P = AL.ArbMatrix(size(V, 2), size(V, 2),prec=prec) # to keep track of the basis change
         Arblib.one!(P)
         for k = 1:s
-            println("QR iteration $k / $s")
+            verbose && println("QR iteration $k / $s")
             F = qr(Float64.(V))
-            U = ArbMatrix(I / F.R,prec=prec)
+            U = AL.ArbMatrix(I / F.R,prec=prec)
             Arblib.approx_mul!(V,V,U)
             Arblib.approx_mul!(P,P,U)
         end
@@ -66,7 +67,7 @@ function approximate_fekete_arb(V::Matrix{T}; s = 3,show_det = false,prec=precis
         # Do a last basis change to get a good basis for these points
         V = V[point_indices,:]
         F = qr(Float64.(V))
-        U = ArbMatrix(I / F.R,prec=prec)
+        U = AL.ArbMatrix(I / F.R,prec=prec)
         Arblib.approx_mul!(V,V,U)
         Arblib.approx_mul!(P,P,U)
         if show_det
@@ -85,11 +86,11 @@ function approximate_fekete_highprec(V::Matrix{T}; s = 3,show_det = false, prec=
         # Then we do the basis change with Arb for speed. Note that especially the QR factorization can take long for large matrices (say 200+ rows/cols)
         # Find the basis change matrix (from the QR factorization)
         F = qr(BigFloat.(V))
-        U = ArbMatrix(F.R,prec=prec)
+        U = AL.ArbMatrix(F.R,prec=prec)
         Arblib.approx_inv!(U,U)
 
         #Do the basis change for V
-        V = ArbMatrix(V,prec=prec)
+        V = AL.ArbMatrix(V,prec=prec)
         Arblib.approx_mul!(V,V,U)
 
         # Do a QR factorization of V^T to get a subset of good sample points
@@ -99,7 +100,7 @@ function approximate_fekete_highprec(V::Matrix{T}; s = 3,show_det = false, prec=
         V = V[point_indices,:]
 
         F = qr(BigFloat.(V))
-        U2 = ArbMatrix(F.R,prec=prec)
+        U2 = AL.ArbMatrix(F.R,prec=prec)
         Arblib.approx_inv!(U2,U2)
         Arblib.approx_mul!(V,V,U2)
         Arblib.approx_mul!(U,U,U2)
@@ -114,6 +115,11 @@ function approximate_fekete_highprec(V::Matrix{T}; s = 3,show_det = false, prec=
 end
 
 # use an exact basis transformation
+"""
+    approximatefeketeexact(R, basis, samples)
+
+Apply approximate fekete but return an exact basis transformation.
+"""
 function approximatefeketeexact(R, basis, samples; s=3)
     esamples = [R.(rationalize.(BigInt, Float64.(sample), tol=1e-3)) for sample in samples]
 

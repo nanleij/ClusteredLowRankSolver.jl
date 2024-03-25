@@ -1,56 +1,151 @@
 # ClusteredLowRankSolver.jl
 
-[`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) provides a primal-dual interior point method for solving clustered low-rank semidefinite programs. This can be used for (semidefinite) programs with polynomial inequality constraints, which can be rewritten in terms of sum-of-squares polynomials.
-
-## Clustered Low-Rank Semidefinite Programs
-A clustered low-rank semidefinite program is defined as
-```math
-\begin{aligned}
-	\min \quad &a +  \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
-	\text{s.t.} \quad & \langle Y^j, A^j_* \rangle + B^T y = c \\
-	& Y^j \succeq 0,
-\end{aligned}
-```
-where the optimization is over the positive semidefinite matrices ``Y^j`` and the vector of free variables ``y``. Here ``\langle Y^j, A^j_*\rangle `` denotes the vector with entries ``\langle Y^j, A^j_p\rangle`` and the matrices ``A^j_p`` have the structure
-```math
-	A_p^j = \bigoplus_{l=1}^{L_j} \sum_{l=1}^{L_j} \sum_{r,s=1}^{R_j(l)} A_p^j(l;r, s) \otimes E_{r,s}^{R_j(l)}.
-```
-For fixed ``j, l``, the matrices ``A_p^j(l;r,s)`` are either normal matrices or of low rank. Furthermore, the full matrices are symmetric, which translates to the condition ``A_p^j(l;r, s)^{\sf T} =  A_p^j(l;s, r)``. The matrix ``E_{r,s}^n`` is the ``n \times n`` matrix with a one at position ``(r,s)`` and zeros otherwise. 
-
-One example where this structure shows up is when using polynomial constraints which are converted to semidefinite programming constraints by sampling.
-Such a semidefinite program with low-rank polynomial constraints is defined as
-```math
-\begin{aligned}
-	\min \quad & a + \sum_j \langle Y^j, C^j \rangle + \langle y, b\rangle \\
-	\text{s.t.} \quad & \langle Y^j, A^j_*(x) \rangle + B^T(x) y = c(x) \\
-	& Y^j \succeq 0,
-\end{aligned}
-```
-where ``A^j_p(x)`` have the same structure as before but have now polynomials as entries. This can be obtained from polynomial inequality constraints by sum-of-squares characterizations. The interface currently focusses on such semidefinite programs with polynomial constraints.
-
-The implementations contains data types for a clustered low-rank semidefinite programs (`ClusteredLowRankSDP`) and semidefinite programs with low-rank polynomial constraints (`LowRankPolProblem`), where a `LowRankPolProblem` can be converted into a `ClusteredLowRankSDP`. The implementation also contains data types for representing low-rank (polynomial) matrices as well as functions and data types for working with samples and sampled polynomials. 
+[`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) implements 
+  - a primal-dual interior point method for solving semidefinite programming problems;
+  - a minimal interface to model semidefinite programming problems with (optional) polynomial equality constraints; 
+  - functionality for working with sampled polynomials; and
+  - an implementation of a rounding heuristic which can round the numerical output of the solver to an exact optimal solution over rational or algebraic numbers. 
+The solver can exploit the low-rank structure of constraint matrices (which arise naturally from enforcing polynomial identities by evaluating both sides at a unisolvent set) but can also work with dense constraint matrices. The solver uses arb for high-precision numerics and the interface integrates with the Nemo computer algebra system.
 
 ## Installation
-The solver is written in Julia, and has been registered as a Julia package. Typing `using ClusteredLowRankSolver` in the REPL will prompt installation if the package has not been installed yet (from Julia 1.7 onwards).
 
+The solver is written in Julia, and has been registered as a Julia package. Typing `using ClusteredLowRankSolver` in the REPL will prompt installation if the package has not been installed yet.
 
-## Documentation
+## Examples
 
-### Solver
-```@docs
-solvesdp
+Here we give two small examples to showcase the interface. For more explanation on the interface, see the [Tutorial](@ref). 
+
+### Example 1: The Goemans-Williamson MAX-CUT relaxation
+Given a Laplacian `L` of a graph with `n` vertices, the semidefinite programming relaxation of the max-cut problem reads
+```math
+\begin{aligned}
+& \text{maximize} & & \left\langle \frac{1}{4}L, X \right\rangle\\
+& \text{subject to} & & \langle E_{ii}, X \rangle = 1, \; i=1,\ldots,n,\\
+&&&X \in S_+^{n}.
+\end{aligned}
+```
+where ``E_{ii}`` is the matrix with a one in the ``(i,i)`` entry, and zeros elsewhere. Here ``\langle \cdot, \cdot \rangle`` denotes the trace inner product.
+
+The following code implements this using `ClusteredLowRankSolver`.
+
+```@example 1
+using ClusteredLowRankSolver
+
+function goemans_williamson(L::Matrix; eps=1e-40)
+    n = size(L, 1)
+
+    # Construct the objective
+    obj = Objective(0, Dict(:X => 1//4 * L), Dict())
+
+    # Construct the constraints
+    constraints = []
+    for i = 1:n
+        M = zeros(Rational{BigInt}, n, n)
+        M[i, i] = 1//1
+        # the first argument is the right hand side
+        push!(constraints, Constraint(1, Dict(:X => M), Dict()))
+    end
+
+    # Construct the problem: Maximize the objective s.t. the constraints hold
+    problem = Problem(Maximize(obj), constraints)
+
+    # Solve the problem
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem, duality_gap_threshold=eps)
+
+    objvalue(problem, dualsol), matrixvar(dualsol, :X)
+end
+nothing # hide
+```
+For a three-cycle, this gives
+```@example 1
+L = [2 -1 -1; -1 2 -1; -1 -1 2]
+obj, X = goemans_williamson(L)
+obj
 ```
 
-### Interface
-```@docs
-ClusteredLowRankSDP
-LowRankPolProblem
-Objective
-Constraint
-LowRankMatPol
-Block
-approximatefekete
-check_problem
-check_sdp!
+### Example 2: Finding the global minimum of a univariate polynomial
+To find the minimum of a polynomial ``f`` of degree ``2d``, one can use the following problem
+```math
+\begin{aligned}
+& \text{maximize} & & \lambda\\
+& \text{subject to} & & f - \lambda = s,\\
+\end{aligned}
+```
+where ``s`` is a sum-of-squares polynomial of degree ``2d``.
+Let ``m`` be a vector whose entries form a basis of the polynomials up to degree ``d``, then we can write ``s = \langle m(x)m(x)^T, X \rangle``, where ``X`` is a positive semidefinite matrix.
+
+```@example 2
+using ClusteredLowRankSolver, Nemo
+
+function polyopt(f, d)
+    # Set up the polynomial ring 
+    P = parent(f)
+    u = gen(P)
+
+    # Compute the polynomial basis and the samples
+    sosbasis = basis_chebyshev(d, u)
+    samples = sample_points_chebyshev(2d, -1, 1) 
+
+    # Construct the constraint SOS + lambda = f
+    c = Dict()
+    c[:X] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    constraint = Constraint(f, c, Dict(:lambda => 1), samples)
+
+    # Construct the objective
+    objective = Objective(0, Dict(), Dict(:lambda => 1))
+
+    # Construct the SOS problem: minimize the objective s.t. the constraint holds
+    problem = Problem(Maximize(objective), [constraint])
+
+    #Solve the SDP and return results
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)    
+    
+    objvalue(problem, dualsol)
+end
+nothing # hide
+```
+Then we can for example find the minimum of the polynomial ``x^2+1`` using
+```@example 2
+R, x = polynomial_ring(QQ, :x)
+minvalue = polyopt(x^2+1, 1)
 ```
 
+### [Exact version of Example 2](@id rounding_univariate)
+To find the minimum exactly we can use the following function.
+```@example 2
+using ClusteredLowRankSolver, Nemo
+
+function polyopt_exact(f, d)
+    # Set up the polynomial ring 
+    P = parent(f)
+    u = gen(P)
+
+    # Compute the polynomial basis and the samples
+    sosbasis = basis_chebyshev(d, u)
+    samples = [round(BigInt, 10000x)//10000 for x in sample_points_chebyshev(2d, -1, 1)] 
+
+    # Construct the constraint SOS + lambda = f
+    c = Dict()
+    c[:X] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    constraint = Constraint(f, c, Dict(:lambda => 1), samples)
+
+    # Construct the objective
+    objective = Objective(0, Dict(), Dict(:lambda => 1))
+
+    # Construct the SOS problem: minimize the objective s.t. the constraint holds
+    problem = Problem(Maximize(objective), [constraint])
+
+    #Solve the SDP and return results
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)    
+    
+    success, esol = exact_solution(problem, primalsol, dualsol)
+
+    success, objvalue(problem, esol)
+end
+nothing # hide
+```
+Then we can find the exact minimum of the polynomial ``x^2+1`` using
+```@example 2
+R, x = polynomial_ring(QQ, :x)
+polyopt_exact(x^2+1, 1)
+```

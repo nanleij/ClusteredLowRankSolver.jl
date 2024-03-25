@@ -13,6 +13,12 @@ evaluate(a::Rational{Int}, x) = a
 ### Completely sampled polynomials ###
 ######################################
 
+"""
+    SampledMPolyRing(base_ring, samples)
+
+A sampled polynomial ring with evaluations in `base_ring`, only defined on the `samples`.
+The samples should be sorted. 
+"""
 struct SampledMPolyRing{T} <: Nemo.Ring
     base_ring
     samples
@@ -23,8 +29,20 @@ struct SampledMPolyRing{T} <: Nemo.Ring
     end
 end
 
+"""
+    sampled_polynomial_ring(base_ring, samples)
+
+Create a `SampledMPolyRing` with values in `base_ring` defined on `samples`. The samples should be sorted.
+"""
+sampled_polynomial_ring(base_ring, samples) = SampledMPolyRing(base_ring, samples)
+
 ==(a::SampledMPolyRing, b::SampledMPolyRing) = a.base_ring == b.base_ring && a.samples == b.samples
 
+"""
+    SampledMPolyRinElem(parent::SampledMPolyRing, evaluations::Vector)
+
+A sampled polynomial corresponding to the given parent, which evaluates to `evaluations` on the samples of the parent ring.
+"""
 struct SampledMPolyRingElem{T} <: Nemo.RingElem
     parent::SampledMPolyRing{T}
     evaluations::AbstractVector{T}
@@ -68,7 +86,9 @@ function Base.one(p::SampledMPolyRingElem{T}) where T
     one(parent(p))
 end
 
-(R::SampledMPolyRing)(p::MPolyRingElem) = SampledMPolyRingElem(R, [R.base_ring(p(x...)) for x in R.samples])
+(R::SampledMPolyRing)(p::Union{QQMPolyRingElem, MPolyRingElem}) = SampledMPolyRingElem(R, [R.base_ring(p(x...)) for x in R.samples])
+(R::SampledMPolyRing)(p::Union{QQPolyRingElem, PolyRingElem}) = SampledMPolyRingElem(R, [R.base_ring(p(x...)) for x in R.samples])
+
 
 Base.iszero(p::SampledMPolyRingElem{T}) where T = all(iszero, p.evaluations)
 Base.isone(p::SampledMPolyRingElem{T}) where T = all(isone, p.evaluations)
@@ -113,6 +133,12 @@ function (p::Generic.MPoly{T})(sp::Vararg{SampledMPolyRingElem{T}}) where T <: R
 end
 
 function evaluate(p::SampledMPolyRingElem, v)
+    # univariate edge case: convert to number or vector depending on the samples of parent(p)
+    if !(v isa Vector) && first(parent(p).samples) isa Vector
+        v = [v]
+    elseif (v isa Vector) && length(v) == 1 && !(first(parent(p).samples) isa Vector)
+        v = first(v)
+    end
     i = searchsortedfirst(parent(p).samples, v)
     @assert parent(p).samples[i] == v || parent(p).samples[i] === v
     p.evaluations[i]
@@ -206,15 +232,15 @@ function Nemo.add!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}, r::Sa
  end
 
 """
-    approximatefekete(basis, samples) -> basis, samples
+    approximatefekete(basis, samples; base_ring=BigFloat) -> basis, samples
 
 Compute approximate fekete points based on samples and a corresponding orthogonal basis.
-The basis consists of sampled polynomials, sampled at `samples`
+The basis consists of sampled polynomials, sampled at `samples`.
 
 This preserves a degree ordering of `basis` if present.
 """
-function approximatefekete(base_ring, basis, samples; show_det=false, s=3)
-    V, P, samples = approximate_fekete(samples, basis, show_det=show_det , s=s, prec=precision(base_ring))
+function approximatefekete(basis, samples; base_ring=BigFloat, show_det=false, s=3, verbose=false)
+    V, P, samples = approximate_fekete(samples, basis, show_det=show_det , s=s, prec=precision(base_ring), verbose=verbose)
     R = SampledMPolyRing(base_ring, samples)
     [SampledMPolyRingElem(R, base_ring.(V[:,p]))  for p in eachindex(basis)], R.samples
 end
@@ -224,45 +250,49 @@ end
 ###################################
 
 """
-    LowRankMatPol(eigenvalues::Vector, rightevs::Vector{Vector}[, leftevs::Vector{Vector}])
+    LowRankMatPol(lambda::Vector, vs::Vector{Vector}[, ws::Vector{Vector}])
 
-The matrix ``∑_i λ_i v_i w_i^T``, where v is specified by rightevs and w by leftevs
+The matrix ``∑_i λ_i v_i w_i^{\\sf T}`` where ``v_i`` are the entries of `vs` and ``w_i`` the entries of `ws`
 
-If `leftevs` is not specified, use `leftevs = rightevs`.
+If `ws` is not specified, use `ws = vs`.
 """
 struct LowRankMatPol
-    eigenvalues::Vector
-    leftevs::Vector{Vector}
-    rightevs::Vector{Vector}
-    function LowRankMatPol(eigenvalues, leftevs, rightevs)
-        if !(length(eigenvalues) == length(leftevs) == length(rightevs))
+    lambda::Vector
+    vs::Vector{Vector}
+    ws::Vector{Vector}
+    function LowRankMatPol(lambda, vs, ws)
+        if !(length(lambda) == length(ws) == length(vs))
             error("LowRankMatPol should have the same number of values as vectors")
         end
-        new(eigenvalues, leftevs, rightevs)
+        if length(unique(length.(vs))) != 1 || length(unique(length.(ws))) != 1
+            error("The size of the rank 1 factors in LowRankMatPol should be consistent")
+        end
+        new(lambda, vs, ws)
     end
 end
 
-function LowRankMatPol(eigenvalues, eigenvectors)
-    LowRankMatPol(eigenvalues, eigenvectors, eigenvectors)
+function LowRankMatPol(lambda, vs)
+    LowRankMatPol(lambda, vs, vs)
 end
 
 function Base.map(f, p::LowRankMatPol)
-    LowRankMatPol(f.(p.eigenvalues),[f.(v) for v in p.leftevs], [f.(v) for v in p.rightevs])
+    LowRankMatPol(f.(p.lambda), [f.(x) for x in p.vs], [f.(x) for x in p.ws])
 end
 
-LinearAlgebra.transpose(A::LowRankMatPol) = LowRankMatPol(A.eigenvalues, A.rightevs, A.leftevs)
+LinearAlgebra.transpose(A::LowRankMatPol) = LowRankMatPol(A.lambda, A.ws, A.vs)
 
-Base.getindex(A::LowRankMatPol, i, j) = sum(A.eigenvalues[r] * A.leftevs[r][j] * A.rightevs[r][i] for r=1:length(A.eigenvalues))
+Base.getindex(A::LowRankMatPol, i, j) = sum(A.lambda[r] * A.ws[r][j] * A.vs[r][i] for r=1:length(A.lambda))
 
 function Base.size(m::LowRankMatPol, i)
-    length(m.leftevs[1])
+    @assert 1 <= i <= 2
+    size(m)[i]
 end
 function Base.size(m::LowRankMatPol)
-    (length(m.rightevs[1]),length(m.leftevs[1]))
+    (length(m.vs[1]), length(m.ws[1]))
 end
 
 function Base.Matrix(p::LowRankMatPol)
-    sum(p.eigenvalues[i] .* (p.rightevs[i] * transpose(p.leftevs[i])) for i in eachindex(p.eigenvalues))
+    sum(p.lambda[i] .* (p.vs[i] * transpose(p.ws[i])) for i in eachindex(p.lambda))
 end
 
 #################################
@@ -312,20 +342,25 @@ end
 Nemo.evaluate(p::Int, s) = p
 
 function Nemo.evaluate(p::LowRankMatPol, sample; scaling=1)
-    LowRankMatPol([scaling*evaluate(v, sample) for v in p.eigenvalues],
-               [[evaluate(v, sample) for v in w] for w in p.leftevs],
-               [[evaluate(v, sample) for v in w] for w in p.rightevs])
+    LowRankMatPol([scaling*evaluate(v, sample) for v in p.lambda],
+               [[evaluate(x, sample) for x in y] for y in p.vs],
+               [[evaluate(x, sample) for x in y] for y in p.ws])
 end
 
-function Nemo.evaluate(p::Matrix, sample::Vector{T}; scaling=1) where T
+Nemo.evaluate(x::ZZRingElem, sample)  = x
+
+
+(p::LowRankMatPol)(sample) = evaluate(p, sample)
+
+function Nemo.evaluate(p::Matrix, sample; scaling=1)
     res = [evaluate(p[i, j], sample) for i=1:size(p, 1), j=1:size(p, 2)]
     scaling * res
 end
 
 function sampleevaluate(p::LowRankMatPol, sample; scaling=1, prec=precision(BigFloat))
-    LowRankMat([sampleevaluate(v, sample, scaling=scaling, prec=prec) for v in p.eigenvalues],
-               [ArbRefMatrix([sampleevaluate(v, sample, prec=prec) for v in w], prec=prec) for w in p.leftevs],
-               [ArbRefMatrix([sampleevaluate(v, sample, prec=prec) for v in w], prec=prec) for w in p.rightevs])
+    LowRankMat([sampleevaluate(v, sample, scaling=scaling, prec=prec) for v in p.lambda],
+               [ArbRefMatrix([sampleevaluate(v, sample, prec=prec) for v in w], prec=prec) for w in p.ws],
+               [ArbRefMatrix([sampleevaluate(v, sample, prec=prec) for v in w], prec=prec) for w in p.vs])
 end
 
 function sampleevaluate(p::LowRankMatPol, sample...; scaling=1, prec=precision(BigFloat))
@@ -350,6 +385,7 @@ function sampleevaluate(p::SampledMPolyRingElem, sample; scaling=1, prec=precisi
     scaling * Arb(p(sample...),prec=prec)
 end
 
+
 function sampleevaluate(p::MatrixElem, sample; scaling=1, prec=precision(BigFloat))
     sampleevaluate(Matrix(p), sample, scaling=scaling, prec=prec)
 end
@@ -359,6 +395,16 @@ function sampleevaluate(p::MPolyRingElem, sample; scaling=1, prec=precision(BigF
     for (ev, c) in zip(exponent_vectors(p), coefficients(p))
         #in case the polynomial ring and the samples are incompatible
         tot += Arb(c; prec=prec) * Arb(prod(sample .^ ev), prec=prec)
+    end
+    Arb(scaling, prec=prec) * tot
+end
+
+function sampleevaluate(p::Union{QQPolyRingElem, PolyRingElem}, sample; scaling=1, prec=precision(BigFloat))
+    tot = Arb(0, prec=prec)
+    for (ev, c) in zip(exponent_vectors(p), coefficients(p))
+        #in case the polynomial ring and the samples are incompatible
+        power = first(ev)
+        tot += Arb(c; prec=prec) * Arb(prod(sample ^ power), prec=prec)
     end
     Arb(scaling, prec=prec) * tot
 end
@@ -376,7 +422,7 @@ sampleevaluate(x::FieldElem, s; scaling=1, prec=precision(BigFloat)) = Arb(scali
 
 Specifies a block corresponding to the positive semidefinite variable `l`.
 
-Specifying `r,s` makes the Block correspond to the `r,s` subblock of the variable `l`.
+Specifying `r,s` makes the `Block` correspond to the `r,s` subblock of the variable `l`.
 """
 struct Block
     l::Any
@@ -391,66 +437,165 @@ end
 function name(b::Block)
     return b.l
 end
+name(b) = b
+function subblock(b::Block)
+    return (b.r, b.s)
+end
+subblock(b) = (1,1)
 
 function Base.isless(a::Block, b::Block)
     isless((a.l, a.r, a.s), (b.l, b.r, b.s))
 end
+function Base.isless(a::Block, b::Any)
+    isless((name(a), subblock(a)...), (name(b), subblock(b)...))
+end
+function Base.isless(a::Any, b::Block)
+    isless((name(a), subblock(a)...), (name(b), subblock(b)...))
+end
 
 """
-    Constraint(constant, matrixcoeff, freecoeff, samples[, scalings])
+    Constraint(constant, matrixcoeff, freecoeff[, samples, scalings])
 
 Models a polynomial constaint of the form
 ```math
-    c(x) = ∑_l ⟨ Y^l_{r,s}, A^l_{r,s}(x) ⟩ + ∑_i y_i B_i(x)
+    ∑_i ⟨ A_i(x), Y_i  ⟩ + ∑_j b_j(x) y_j = c(x)
 ```
-with samples, where `r,s` are defined by the `Block` structure with `l` as first argument
+using sampling on `samples`. Here the samples are only required if ``A_i``, ``b_j``, and ``c`` are polynomials.
+When the coefficient matrix ``A_i`` has block structure with equal sized blocks, the
+`Block` struct can be used as key to indicate to which subblock the given matrix corresponds.
 
 Arguments:
-  - `constant::MPolyRingElem`
-  - `matrixcoeff::Dict{Block, LowRankMatPol}`
-  - `freecoeff::Dict{Any, MPolyRingElem}`
-  - `samples::Vector{Vector}`
-  - `scalings::Vector`
+  - `constant`: The right hand side ``c(x)``
+  - `matrixcoeff::Dict`: The coefficient matrices for the positive semidefinite matrix variables.
+  - `freecoeff::Dict`: The coefficients for the free variables.
+  - `samples::Vector`: The sample set on which the constraint should be satisfied. Required for polynomial constraints.
+  - `scalings::Vector`: Optional; scale the constraint with a factor depending on the sample index.
 """
 struct Constraint
     constant
-    matrixcoeff::Dict{Block, Any}
+    matrixcoeff::Dict
     freecoeff::Dict
-    samples::Vector{Vector}
+    samples::Vector
     scalings::Vector
 end
 
 Constraint(constant, matrixcoeff, freecoeff, samples) = Constraint(constant, matrixcoeff, freecoeff, samples, [1 for s in samples])
 
-Constraint(constant, matrixcoeff, freecoeff) = Constraint(constant, matrixcoeff, freecoeff, [[0]], [1]) #assume numbers instead of polynomials
+Constraint(constant, matrixcoeff, freecoeff) = Constraint(constant, matrixcoeff, freecoeff, [0], [1]) #assume numbers instead of polynomials
 
 """
-    Objective(constant, matrixcoeff::Dict{Block, Matrix}, freecoeff::Dict)
+    Objective(constant, matrixcoeff::Dict, freecoeff::Dict)
 
-The objective for the Problem
+The objective for the Problem.
+
+Arguments:
+  - `constant`: A constant offset of the objective value.
+  - `matrixcoeff`: A `Dict` with positive semidefinite matrix variable names as keys and the objective matrices as values.
+  - `freecoeff`: A `Dict` with free variable names as keys and the coefficients as values.
 """
 struct Objective
     constant
-    matrixcoeff::Dict{Block, Matrix}
+    matrixcoeff::Dict
     freecoeff::Dict
 end
 
-# function objective(objective::Objective, sol::DualSolution)
-#     obj = objective.constant
-#     for (k, v) in program.objective
-# end
+"""
+    matrixcoeff(x::Union{Constraint, Objective}, name)
+
+Return the matrix coefficient corresponding to `name`
+"""
+function matrixcoeff(x::Union{Constraint, Objective}, name)
+    x.matrixcoeff[name]
+end
+"""
+    matrixcoeffs(x::Union{Constraint, Objective})
+
+Return the dictionary of matrix coefficients
+"""
+function matrixcoeffs(x::Union{Constraint, Objective})
+    x.matrixcoeff
+end
+"""
+    freecoeffs(x::Union{Constraint, Objective})
+
+Return the dictionary of coefficients for the free variables
+"""
+function freecoeffs(x::Union{Constraint, Objective})
+    x.freecoeff
+end
+"""
+    freecoeff(x::Union{Constraint, Objective}, name)
+
+Return the coefficient of the free variable corresponding to `name`
+"""
+function freecoeff(x::Union{Constraint, Objective}, name)
+    x.freecoeff[name]
+end
 
 """
-    Problem(maximize, objective, constraints)
+    Maximize(obj)
 
-Combine the objective and constraints into a low-rank polynomial problem
+Maximize the objective
+"""
+struct Maximize
+    objective::Objective
+end
+"""
+    Minimize(obj)
+
+Minimize the objective
+"""
+struct Minimize
+    objective::Objective
+end
+
+"""
+```
+    Problem(maximize::Bool, objective::Objective, constraints::Vector{Constraint})
+```
+```
+    Problem(obj::Union{Maximize, Minimize}, constraints::Vector)
+```
+Combine the objective and constraints into a low-rank polynomial problem.
 """
 struct Problem
     maximize::Bool
     objective::Objective
     constraints::Vector{Constraint}
+    function Problem(maximize::Bool, objective::Objective, constraints::Vector)
+        @assert all(x isa Constraint for x in constraints)
+        new(maximize, objective, constraints)
+    end
 end
 
+function Problem(obj::Maximize, constraints::Vector)
+    return Problem(true, objective(obj), constraints)
+end
+function Problem(obj::Minimize, constraints::Vector)
+    return Problem(false, objective(obj), constraints)
+end
+
+"""
+    constraints(problem::Problem)
+
+Return the constraints of `problem`.
+"""
+constraints(problem::Problem) = problem.constraints
+
+"""
+    objective(x::Union{Maximize, Minimize, Problem})
+
+Return the objective.
+"""
+function objective(obj::Union{Maximize, Minimize, Problem})
+    obj.objective
+end
+
+"""
+    map(f, problem::Problem)
+
+Apply the function `f` to all coefficients in `problem`. 
+"""
 function Base.map(f, l::Problem)
     objective = Objective(f(l.objective.constant), Dict(k => f.(v) for (k, v) in l.objective.matrixcoeff), Dict(k => f(v) for (k, v) in l.objective.freecoeff))
     constraints = []
@@ -460,10 +605,21 @@ function Base.map(f, l::Problem)
     Problem(l.maximize, objective, constraints)
 end
 
+"""
+    addconstraint!(problem, constraint)
+
+Add `constraint` to the constraints of `problem`. 
+"""
 function addconstraint!(problem::Problem, constraint::Constraint)
     push!(problem.constraints, constraint)
 end
 
+"""
+    model_psd_variables_as_free_variables!(problem::Problem, as_free)
+
+Model the positive semidefinite variables with names in `as_free` using free variables,
+ and add extra constraints to set them equal to auxilliary positive semidefinite variables.
+"""
 function model_psd_variables_as_free_variables!(problem::Problem, as_free)
     for l in as_free
         #For each constraint, for each Block b with l==b.l, we need to
@@ -475,25 +631,26 @@ function model_psd_variables_as_free_variables!(problem::Problem, as_free)
         n = 0
         for constraint in problem.constraints
             for block in collect(keys(constraint.matrixcoeff))
-                if block.l == l #we do this l now
+                if name(block) == l #we do this l now
                     if n == 0
                         n = size(constraint.matrixcoeff[block],1)
                     elseif n != size(constraint.matrixcoeff[block],1)
                         error("The blocks are not of equal sizes")
                     end
                     for i = 1:size(constraint.matrixcoeff[block],1), j = 1:size(constraint.matrixcoeff[block],2)
-                        if block.r == block.s && i >= j
+                        r, s = subblock(block)
+                        if r == s && i >= j
                             #diagonal (r,s) block, so we only need to do things when i >= j
                             if i == j # just the entry
-                                constraint.freecoeff[(l,(block.r-1)*n+i,(block.s-1)*n+j)] = constraint.matrixcoeff[block][i,j]
+                                constraint.freecoeff[(l,(r-1)*n+i,(s-1)*n+j)] = constraint.matrixcoeff[block][i,j]
                             else #i > j, so we need to take both sides of the diagonal into account
-                                constraint.freecoeff[(l,(block.r-1)*n+i,(block.s-1)*n+j)] = 2*constraint.matrixcoeff[block][i,j]
+                                constraint.freecoeff[(l,(r-1)*n+i,(s-1)*n+j)] = 2*constraint.matrixcoeff[block][i,j]
                             end
-                        elseif block.r > block.s #the other case is r < s, but because it is symmetric we do that now too. (hence the factor 2)
-                            constraint.freecoeff[(l,(block.r-1)*n+i,(block.s-1)*n+j)] = 2 * constraint.matrixcoeff[block][i,j]
+                        elseif r > s #the other case is r < s, but because it is symmetric we do that now too. (hence the factor 2)
+                            constraint.freecoeff[(l,(r-1)*n+i,(s-1)*n+j)] = 2 * constraint.matrixcoeff[block][i,j]
                         end
                     end
-                    m = max(block.r,block.s,m)
+                    m = max(r,s,m)
                     delete!(constraint.matrixcoeff,block)
                 end
             end
@@ -530,19 +687,20 @@ function model_psd_variables_as_free_variables!(problem::Problem, as_free)
         #This is an implementation of (1)
         new_blocks = Dict() #because we delete the blocks afterwards, so we need to store the new blocks separately and put them in the objective afterwards
         for block in collect(keys(problem.objective.matrixcoeff)) # now this is not modified during the loop
-            if block.l == l && block.r >= block.s # we only do the lower half, and we make it symmetric
+            r,s = subblock(block)
+            if name(block) == l && r >= s # we only do the lower half, and we make it symmetric
                 for i=1:n
-                    for j=1:(block.r == block.s ? i : n)
-                        if (block.r-1)*n+i == (block.s-1)*n + j # on the diagonal
-                            new_blocks[Block(l, (block.r-1)*n+i, (block.s-1)*n+j)] = hcat(problem.objective.matrixcoeff[block][i,j])
+                    for j=1:(r == block.s ? i : n)
+                        if (r-1)*n+i == (s-1)*n + j # on the diagonal
+                            new_blocks[Block(l, (r-1)*n+i, (s-1)*n+j)] = hcat(problem.objective.matrixcoeff[block][i,j])
                         else #not on the diagonal of the full matrix, so we need to take both sides into account
-                            new_blocks[Block(l, (block.r-1)*n+i, (block.s-1)*n+j)] = hcat(problem.objective.matrixcoeff[block][i,j])
-                            new_blocks[Block(l, (block.s-1)*n+j, (block.r-1)*n+i)] = hcat(problem.objective.matrixcoeff[block][i,j])
+                            new_blocks[Block(l, (r-1)*n+i, (s-1)*n+j)] = hcat(problem.objective.matrixcoeff[block][i,j])
+                            new_blocks[Block(l, (s-1)*n+j, (r-1)*n+i)] = hcat(problem.objective.matrixcoeff[block][i,j])
                         end
                     end
                 end
             end
-            if block.l == l
+            if name(block) == l
                 delete!(problem.objective.matrixcoeff,block)
             end
         end
@@ -558,44 +716,46 @@ end
 #########################
 
 struct LowRankMat
-    eigenvalues::Vector{Arb}
-    leftevs::Vector{ArbRefMatrix}
-    rightevs::Vector{ArbRefMatrix}
+    lambda::Vector{Arb}
+    vs::Vector{ArbRefMatrix}
+    ws::Vector{ArbRefMatrix}
 end
-function LowRankMat(eigenvalues, eigenvectors)
-    LowRankMat(eigenvalues, eigenvectors, eigenvectors)
+function LowRankMat(lambda, vs)
+    LowRankMat(lambda, vs, vs)
 end
 
-Base.getindex(A::LowRankMat,i,j) = sum(A.eigenvalues[r] * A.leftevs[r][j] * A.rightevs[r][i] for r=1:length(A.eigenvalues))
+Base.getindex(A::LowRankMat, i, j) = sum(A.lambda[r] * A.vs[r][i] * A.ws[r][j] for r=1:length(A.lambda))
 
 function Base.size(m::LowRankMat, i)
-    length(m.leftevs[1])
+    @assert 1 <= i <= 2
+    size(m)[i]
 end
 function Base.size(m::LowRankMat)
-    (length(m.rightevs[1]), length(m.leftevs[1]))
+    (length(m.vs[1]), length(m.ws[1]))
 end
 
+
 function convert_to_prec(A::LowRankMat,prec=precision(BigFloat))
-    evs = [Arb(ev,prec=prec) for ev in A.eigenvalues]
-    leftvecs = [ArbRefMatrix(vec,prec=prec) for vec in A.leftevs]
-    rightvecs = [ArbRefMatrix(vec,prec=prec) for vec in A.rightevs]
+    evs = [Arb(ev,prec=prec) for ev in A.lambda]
+    vs = [ArbRefMatrix(vec,prec=prec) for vec in A.vs]
+    ws = [ArbRefMatrix(vec,prec=prec) for vec in A.ws]
     for i=1:length(evs)
         Arblib.get_mid!(evs[i],evs[i])
-        Arblib.get_mid!(leftvecs[i],leftvecs[i])
-        Arblib.get_mid!(rightvecs[i],rightvecs[i])
+        Arblib.get_mid!(vs[i], vs[i])
+        Arblib.get_mid!(ws[i], ws[i])
     end
-    return LowRankMat(evs,leftvecs,rightvecs)
+    return LowRankMat(evs, vs, ws)
 end
-function convert_to_prec(A::ArbRefMatrix,prec=precision(BigFloat))
-    res = ArbRefMatrix(A,prec=prec)
-    Arblib.get_mid!(res,res)
+function convert_to_prec(A::ArbRefMatrix, prec=precision(BigFloat))
+    res = ArbRefMatrix(A, prec=prec)
+    Arblib.get_mid!(res, res)
     return res
 end
 
-LinearAlgebra.transpose(A::LowRankMat) = LowRankMat(A.eigenvalues, A.rightevs, A.leftevs)
+LinearAlgebra.transpose(A::LowRankMat) = LowRankMat(A.lambda, A.ws, A.vs)
 
 function Base.Matrix(p::LowRankMat)
-    sum(p.eigenvalues[i] .* (p.rightevs[i] * transpose(p.leftevs[i])) for i in eachindex(p.eigenvalues))
+    sum(p.lambda[i] .* (p.vs[i] * transpose(p.ws[i])) for i in eachindex(p.lambda))
 end
 
 
@@ -613,29 +773,29 @@ struct ClusteredLowRankSDP
     b::ArbRefMatrix                                         #b
     matrix_coeff_names::Vector{Vector{Any}}                 # the (user defined) names of the blocks
     free_coeff_names::Vector{Any}                           # the (user defined) names of the free variables
+    matrix_coeff_blocks::Vector{Vector{Tuple{Bool, Int}}}   # whether the user used Block and the number of subblocks 
 end
 
 function ClusteredLowRankSDP(maximize, constant, A, B, c, C, b)
     matrixcoeff_names = [[(j,l) for l in eachindex(A[j])] for j in eachindex(A)]
     freecoeff_names = collect(1:size(b,1))
-    ClusteredLowRankSDP(maximize, constant, A, B, c, C, b, matrixcoeff_names, freecoeff_names)
+    matrix_coeff_blocks = [[(false, 1) for l in block] for block in A]
+    ClusteredLowRankSDP(maximize, constant, A, B, c, C, b, matrixcoeff_names, freecoeff_names,matrix_coeff_blocks)
 end
 
 """
-    ClusteredLowRankSDP(sos::Problem; as_free::Vector, prec, verbose])
+    ClusteredLowRankSDP(problem::Problem; prec=precision(BigFloat), verbose=false)
 
-Define a ClusteredLowRankSDP based on the Problem sos.
+Define a `ClusteredLowRankSDP` based on `problem`.
 
-The PSD variables defined by the keys in the vector `as_free` will be modelled as extra free variables,
-with extra constraints to ensure that they are equal to the entries of the PSD variables.
-Remaining keyword arguments:
-  - `prec` (default: precision(BigFloat)) - the precision of the result
-  - `verbose` (default: false) -  print progress to the standard output
+Keyword arguments:
+  - `prec` (default: `precision(BigFloat)`): the precision of the result
+  - `verbose` (default: false): print progress to the standard output
 """
 function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=false)
     verbose && println("Forming the clusters...")
 
-    # clusters will be a vector of vectors containing block labels (so block.l)
+    # clusters will be a vector of vectors containing block labels (so name(block))
     #NOTE: if a constraint doesn't have PSD variables, this creates an empty cluster.
     clusters = Vector{Any}[]
     for constraintindex in eachindex(sos.constraints)
@@ -643,7 +803,7 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
         clusterset = Set{Int}()
         for k in keys(constraint.matrixcoeff)
             for i in eachindex(clusters)
-                if k.l in clusters[i]
+                if name(k) in clusters[i]
                     push!(clusterset, i)
                 end
             end
@@ -651,12 +811,12 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
         clusterset = sort(collect(clusterset))
         if isempty(clusterset)
             if length(keys(constraint.matrixcoeff)) > 0 #only create a new cluster for constraints with matrix blocks
-                push!(clusters, [k.l for k in keys(constraint.matrixcoeff)])
+                push!(clusters, [name(k) for k in keys(constraint.matrixcoeff)])
             end
         else
             #remove the clusters which we need to combine from 'clusters', and merge them
             u = union(splice!(clusters, clusterset)...)
-            append!(u, [k.l for k in keys(constraint.matrixcoeff)])
+            append!(u, [name(k) for k in keys(constraint.matrixcoeff)])
             push!(clusters, u)
         end
     end
@@ -673,7 +833,7 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
         k = first(keys(constraint.matrixcoeff))
         found_cluster = false
         for clusterindex in eachindex(clusters)
-            if k.l in clusters[clusterindex]
+            if name(k) in clusters[clusterindex]
                 push!(cluster_constraint_index[clusterindex], constraintindex)
                 found_cluster = true
                 break
@@ -695,23 +855,33 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     end
     A = []
     C = []
+    matrix_coeff_blocks = []
     matrix_coeff_names = []
     for clusterindex in eachindex(cluster_constraint_index)
         constraintindices = cluster_constraint_index[clusterindex]
         nsubblocks = Dict{Any,Int}()
         subblocksizes = Dict{Any,Int}()
         highranks = Dict{Any, Bool}()
+        subblockBlock = Dict()
         for constraintindex in constraintindices
             constraint = sos.constraints[constraintindex]
             for block in keys(constraint.matrixcoeff)
-                subblocksizes[block.l] = max(size(constraint.matrixcoeff[block], 1),get(subblocksizes,block.l,0))
-                nsubblocks[block.l] = max(block.r, block.s, get(nsubblocks, block.l, 0))
-                highranks[block.l] = get(highranks, block.l, false) || typeof(constraint.matrixcoeff[block]) != LowRankMatPol
+                r,s = subblock(block)
+                subblocksizes[name(block)] = max(size(constraint.matrixcoeff[block], 1),get(subblocksizes,name(block),0))
+                nsubblocks[name(block)] = max(r, s, get(nsubblocks, name(block), 0))
+                highranks[name(block)] = get(highranks, name(block), false) || typeof(constraint.matrixcoeff[block]) != LowRankMatPol
+                if haskey(subblockBlock, name(block)) && subblockBlock[name(block)] != (block isa Block) 
+                    println("Please use Block consistently. Solutions with Block($(name(block))) will be returned.")
+                    subblockBlock[name(block)] = true
+                else
+                    subblockBlock[name(block)] = (block isa Block)
+                end
             end
         end
         v = [[Dict{Int,Union{LowRankMat, ArbRefMatrix}}() for _=1:m, _=1:m] for (k, m) in nsubblocks]
 		subblock_keys = collect(keys(nsubblocks)) #fix an order
         subblock_keys_dict = Dict(k=>i for (i,k) in enumerate(subblock_keys))
+        push!(matrix_coeff_blocks, [(subblockBlock[k], nsubblocks[k]) for k in subblock_keys])
 
         i = 1
         #This can take quite long for a large amount of samples & a large basis
@@ -720,7 +890,8 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
             for (idx,sample) in enumerate(constraint.samples)
                 for block in keys(constraint.matrixcoeff)
                     #we can make a dict from subblock_keys to indices?
-                    v[subblock_keys_dict[block.l]][block.r,block.s][i] = sampleevaluate(constraint.matrixcoeff[block], sample,scaling = constraint.scalings[idx],prec=prec)
+                    r, s = subblock(block)
+                    v[subblock_keys_dict[name(block)]][r,s][i] = sampleevaluate(constraint.matrixcoeff[block], sample,scaling = constraint.scalings[idx],prec=prec)
                     # We can set the s,r block here to the transpose of the r,s block. Or to 1/2 * the transpose if we would want that.
                 end
                 for l in keys(highranks)
@@ -745,8 +916,9 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
 
         M = [[ArbRefMatrix(subblocksizes[l], subblocksizes[l],prec=prec) for r=1:m, s=1:m] for (l, m) in nsubblocks]
         for block in keys(sos.objective.matrixcoeff)
-            if block.l in clusters[clusterindex]
-                M[subblock_keys_dict[block.l]][block.r, block.s] = ArbRefMatrix(sos.objective.matrixcoeff[block], prec=prec)
+            if name(block) in clusters[clusterindex]
+                r, s = subblock(block)
+                M[subblock_keys_dict[name(block)]][r, s] = ArbRefMatrix(sos.objective.matrixcoeff[block], prec=prec)
             end
         end
         push!(C, [ArbRefMatrix(hvcat(size(S,2), [S[r,s] for r=1:size(S,1) for s=1:size(S,2)]...),prec=prec) for S in M])
@@ -788,10 +960,14 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     for (k,v) in sos.objective.freecoeff
         b[freecoefflabels_dict[k]] = Arb(v, prec=prec)
     end
-
-    ClusteredLowRankSDP(sos.maximize, Arb(sos.objective.constant,prec=prec), A, B, c, C_block, b, matrix_coeff_names,freecoefflabels)
+    ClusteredLowRankSDP(sos.maximize, Arb(sos.objective.constant,prec=prec), A, B, c, C_block, b, matrix_coeff_names,freecoefflabels, matrix_coeff_blocks)
 end
 
+"""
+    convert_to_prec(sdp, prec=precision(BigFloat))
+
+Convert the semidefinite program to a semidefinite program with prec bits of precision, without error bounds.
+"""
 function convert_to_prec(sdp::ClusteredLowRankSDP,prec=precision(BigFloat))
     # We convert everything to the new precision
     new_A = similar(sdp.A)
@@ -825,7 +1001,7 @@ function convert_to_prec(sdp::ClusteredLowRankSDP,prec=precision(BigFloat))
     new_b = ArbRefMatrix(sdp.b, prec=prec)
     Arblib.get_mid!(new_b, new_b)
 
-    return ClusteredLowRankSDP(sdp.maximize,new_constant,new_A,new_B,new_c,new_C,new_b,sdp.matrix_coeff_names,sdp.free_coeff_names)
+    return ClusteredLowRankSDP(sdp.maximize,new_constant,new_A,new_B,new_c,new_C,new_b,sdp.matrix_coeff_names,sdp.free_coeff_names, sdp.matrix_coeff_blocks)
 end
 
 ######################
@@ -841,6 +1017,11 @@ struct DualFeasible <: Status end
 struct Feasible <: Status end
 struct NotConverged <: Status end
 
+"""
+    optimal(x::Status)
+
+Return whether the solutions corresponding to this status are optimal.
+"""
 optimal(::Status) = false
 optimal(::Optimal) = true
 
@@ -851,19 +1032,38 @@ Base.show(io::IO, x::PrimalFeasible) = @printf(io,"pFeas")
 Base.show(io::IO, x::DualFeasible) = @printf(io,"dFeas")
 Base.show(io::IO, x::Status) = @printf(io,"NOINFO")
 
+"""
+    PrimalSolution{T}
+
+A primal solution to the semidefinite program, with fields
+  - `base_ring`
+  - `x::Vector{T}`
+  - `matrixvars::Dict{Any, Matrix{T}}`
+"""
 struct PrimalSolution{T}
     base_ring
     x::Vector{T}
-    matrixvars::Dict{Block,Matrix{T}} 
+    matrixvars::Dict{Any,Matrix{T}} 
 end
 
+"""
+    DualSolution{T}
+
+A dual solution to the semidefinite program, with fields
+  - `base_ring`
+  - `matrixvars::Dict{Any, Matrix{T}}`
+  - `freevars::Dict{Any, T}`
+"""
 struct DualSolution{T}
     base_ring
-    matrixvars::Dict{Block,Matrix{T}}
+    matrixvars::Dict{Any,Matrix{T}}
     freevars::Dict{Any,T}
 end
 
-function objvalue(objective::Objective, sol::DualSolution{T}) where T
+"""
+    objvalue(objective::Objective, sol::DualSolution)
+"""
+function objvalue(objective::Objective, sol::DualSolution{T}) where T <: Number
     obj = T(objective.constant)
     for k in keys(objective.matrixcoeff)
         obj += dot(T.(objective.matrixcoeff[k]), sol.matrixvars[k])
@@ -873,16 +1073,41 @@ function objvalue(objective::Objective, sol::DualSolution{T}) where T
     end
     obj
 end
+# for exact fields from Nemo
+function objvalue(objective::Objective, sol::DualSolution)
+    obj = objective.constant
+    for k in keys(objective.matrixcoeff)
+        obj += dot(objective.matrixcoeff[k], sol.matrixvars[k])
+    end
+    for k in keys(objective.freecoeff)
+        obj += objective.freecoeff[k] * sol.freevars[k]
+    end
+    obj
+end
+"""
+    objvalue(problem::Problem, sol::DualSolution)
 
+Return the objective value of the dual solution with respect to the given objective or problem.
+"""
 function objvalue(problem::Problem, sol::DualSolution)
     objvalue(problem.objective, sol)
 end
+function objvalue(obj::Union{Minimize, Maximize}, sol::DualSolution)
+    objvalue(objective(obj), sol)
+end
 
+#Q: Do we want abstract struct Solution, with subtypes DualSolution and PrimalSolution?
+# then stuff like matrixvar works for both
 struct Solution{T}
     primalsol::PrimalSolution{T}
     dualsol::DualSolution{T}
 end
 
+"""
+    matrixvar(sol, name)
+
+Return the matrix variable corresponding to name
+"""
 function matrixvar(sol::DualSolution, name)
     sol.matrixvars[name]
 end
@@ -891,23 +1116,55 @@ function matrixvar(sol::PrimalSolution, name)
     sol.matrixvars[name]
 end
 
+"""
+    matrixvars(sol)
+
+Return the dictionary of matrix variables
+"""
+function matrixvars(sol::DualSolution)
+    sol.matrixvars
+end
+
+function matrixvars(sol::PrimalSolution)
+    sol.matrixvars
+end
+
+"""
+    freevar(sol, name)
+
+Return the free variable corresponding to name
+"""
 function freevar(sol::DualSolution, name)
     sol.freevars[name]
 end
+"""
+    freevars(sol)
+
+Return the dictionary of the free variables
+"""
+function freevars(sol::DualSolution)
+    sol.freevars
+end
 
 function traceinner(m::LowRankMatPol, v::Matrix)
-    # Tr(m^T * v)= Tr((rightev * leftev^T)^T * v) = dot(rightev, v * leftev)
-    sum(m.eigenvalues[i] * dot(m.rightevs[i], v * m.leftevs[i]) for i in eachindex(m.eigenvalues))
+    sum(m.lambda[i] * dot(m.vs[i], v * m.ws[i]) for i in eachindex(m.lambda))
 end
 traceinner(v::Matrix, m::LowRankMatPol) = traceinner(m, v)
 
 LinearAlgebra.dot(v::Matrix, m::LowRankMatPol) = traceinner(m, v)
+LinearAlgebra.dot(m::LowRankMatPol, v::Matrix) = traceinner(m, v)
 
 function traceinner(m::Matrix, v::Matrix)
+    @assert size(m) == size(v)
     sum(2^(i!=j) * m[i, j] * v[i, j] for i=1:size(m,1) for j=i:size(m,2))
 end
 
 #compute Ax-b, where the constraints should satisfy Ax = b
+"""
+    slacks(problem, dualsol)
+
+Compute the difference between the left hand side and the right hand side of all constraints
+"""
 function slacks(problem::Problem, sol::DualSolution)
     slacks = []
     for constraint in problem.constraints
@@ -924,6 +1181,12 @@ function slacks(problem::Problem, sol::DualSolution)
     slacks
 end
 
+"""
+    vectorize(sol)
+
+Vectorize the solution by taking the upper triangular part of the matrices. 
+The variables are first sorted by size and then by hash.
+"""
 function vectorize(sol::DualSolution{T}) where T
     v = T[]
     for k in sort(collect(keys(sol.matrixvars)), by=k->(size(sol.matrixvars[k],1), hash(k)))
@@ -938,10 +1201,15 @@ function vectorize(sol::DualSolution{T}) where T
     v
 end
 
+"""
+    as_dual_solution(sol, x)
+
+Undo the vectorization of x.
+"""
 function as_dual_solution(sol::DualSolution, x::Vector{T}) where T
     t = 1
 
-    matrixvars = Dict{Block,Matrix{T}}()
+    matrixvars = Dict{Any,Matrix{T}}()
     for k in sort(collect(keys(sol.matrixvars)), by=k->(size(sol.matrixvars[k],1), hash(k)))
         v = sol.matrixvars[k]
         m = Matrix{T}(undef, size(v, 1), size(v, 1))
@@ -961,6 +1229,12 @@ function as_dual_solution(sol::DualSolution, x::Vector{T}) where T
     DualSolution{T}(parent(x[1]), matrixvars, freevars)
 end
 
+#TODO: what exactly do we want here in case of subblocks?
+"""
+    blocksizes(problem)
+
+Return the sizes of the matrix variables as a dictionary with the same keys
+"""
 function blocksizes(problem::Problem)
     mvd = Dict()
     for constraint in problem.constraints, (k, v) in constraint.matrixcoeff
@@ -978,7 +1252,7 @@ Let x be the vcat of the vectorizations of the matrix variables. Let I be the in
 This function returns the matrix A_I and vector b-Ax such that the constraints for 
 the error vector e using variables indexed by I are given by the system A_Ie = b-Ax.
 """
-function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Vector{Int}; FF=QQ, monomial_bases=nothing, verbose=false)
+function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Vector{Int}; FF=QQ, monomial_bases=nothing)
     # create a dual solution with 1 if the variable should be in the system and 0 otherwise
     x_cols = zero(vectorize(sol))
     for i in columns
@@ -988,13 +1262,12 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Vect
     # create a vector with indices being the columns that need to be taken into account
     # x_cols = vectorize(columns)
     # columns = [i for i in eachindex(x_cols) if x_cols[i] != 0]
-    A,b = partial_linearsystem(problem, sol, columns_sol; FF=FF, monomial_bases=monomial_bases, verbose=verbose)
+    A,b = partial_linearsystem(problem, sol, columns_sol; FF=FF, monomial_bases=monomial_bases)
     # get the correct order. A has now the order of sort(columns)
     p = sortperm(columns)
     A[:, invperm(p)], b
 end
-function partial_linearsystem(problem::Problem, sol::DualSolution, columns::DualSolution; FF=QQ, monomial_bases=nothing, verbose=false)
-    verbose && print("Creating the right hand side b-Ax...")
+function partial_linearsystem(problem::Problem, sol::DualSolution, columns::DualSolution; FF=QQ, monomial_bases=nothing)
     t = @elapsed begin
         rhs = -slacks(problem, sol) # b - Ax
         if isnothing(monomial_bases)
@@ -1002,7 +1275,8 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Dual
             b = matrix(FF, length(b), 1, b)
         else
             Rs = [parent(last(m)) for m in monomial_bases]
-            exp_vecs = [[exponent_vector(m,1) for m in mons] for mons in monomial_bases]
+            # this also works for univariate polynomials
+            exp_vecs = [[last([ev for (c, ev) in zip(coefficients(m), exponent_vectors(m)) if c != 0]) for m in mons] for mons in monomial_bases]
             mon_lengths = [sum(length.(monomial_bases)[1:k-1]; init=0) for k=1:length(monomial_bases)]
             indices_expvecs = [Dict(exp_vecs[k][i]=>mon_lengths[k] + i for i in eachindex(exp_vecs[k])) for k in eachindex(exp_vecs)]
             b = zero_matrix(FF, sum(length.(monomial_bases)), 1)
@@ -1016,7 +1290,6 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Dual
             end
         end
     end
-    verbose && println(" $t")
 
     nrs = sum(length(constraint.samples) for constraint in problem.constraints)
 
@@ -1034,7 +1307,6 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Dual
 
     j = 1 # the column index; only increased when we encounter entries we consider
     #this is the block we now consider
-    verbose && print("Creating the matrix A of the partial linear system...")
     t = @elapsed begin
         for bln in sort(collect(keys(mvd)), by=x->(mvd[x], hash(x)))
             s = mvd[bln] # the size of the block
@@ -1098,20 +1370,19 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Dual
             end
         end
     end
-    verbose && println(" $t")
     return A, b
 end
 
 
 
 """
-	linearsystem(problem::Problem)
+	linearsystem(problem::Problem, FF=QQ)
 
 Let x be the vcat of the vectorizations of the matrix variables.
 This function returns the matrix A and vector b such that the constraints are
-given by the system Ax = b.
+given by the system Ax = b (over the field FF).
 """
-function linearsystem(problem::Problem, FF=QQ)
+function linearsystem(problem::Problem; FF=QQ, verbose = false)
     nrs = sum(length(constraint.samples) for constraint in problem.constraints)
 
 	mvd = blocksizes(problem)
@@ -1166,7 +1437,7 @@ end
 
 
 """
-    linearsystem_coefficientmatching(problem::Problem, monomial_basis::Vector{Vector{MPolyRingElem}}, FF=QQ)
+    linearsystem_coefficientmatching(problem::Problem, monomial_basis::Vector{Vector{MPolyRingElem}}; FF=QQ)
 
 Let x be the vcat of the vectorizations of the matrix variables.
 This function returns the matrix A and vector b such that the constraints obtained 
@@ -1174,7 +1445,7 @@ from coefficient matching are given by the system Ax = b over the field FF, with
 one constraint per monomial in monomial_basis. The problem should not contain 
 SampledMPolyRingElem's for this to work.
 """
-function linearsystem_coefficientmatching(problem::Problem, monomial_bases, FF=QQ)
+function linearsystem_coefficientmatching(problem::Problem, monomial_bases; FF=QQ)
     Rs = [parent(last(m)) for m in monomial_bases]
     # base_rings = [base_ring(R) for R in Rs]
 
@@ -1192,7 +1463,9 @@ function linearsystem_coefficientmatching(problem::Problem, monomial_bases, FF=Q
     A = zero_matrix(FF, nrs, ncs)#[FF(0) for i=1:nrs, j=1:ncs]
 	b = zero_matrix(FF, nrs, 1)#[FF(0) for i=1:nrs]
     #TODO: find the monomials (now input for easyness)
-    exp_vecs = [[exponent_vector(m,1) for m in mons] for mons in monomial_bases]
+    # This works for univariate polynomials now too due to the check on nonzero coefficients
+    exp_vecs = [[last([ev for (c, ev) in zip(coefficients(m), exponent_vectors(m)) if c != 0]) for m in mons] for mons in monomial_bases]
+    @assert unique.(exp_vecs) == exp_vecs
     
     
     mon_lengths = [sum(length.(monomial_bases)[1:k-1]; init=0) for k=1:length(monomial_bases)]
@@ -1257,4 +1530,60 @@ function linearsystem_coefficientmatching(problem::Problem, monomial_bases, FF=Q
 
 	end
 	A, b
+end
+
+
+##############################################################################
+################    Embedding a number field in R   ##########################
+##############################################################################
+
+
+# usage: map(x->generic_embedding(x,g), problem), where g is an approximation of the generator of the field
+"""
+    basic_embedding(exactvalue)
+
+Convert the exact (rational or integer) numbers to floating point approximations.
+"""
+basic_embedding(x) = generic_embedding(x, BigFloat(1))
+
+"""
+    generic_embedding(exactvalue, g; base_ring=BigFloat)
+
+Convert the exact numbers from a number field to floating point approximations, 
+using a floating point approximation of a generator g of the field.
+
+Convert rationals and integers to the same numbers in base_ring.
+"""
+function generic_embedding(p::Union{QQMPolyRingElem, MPolyRingElem, QQPolyRingElem, PolyRingElem}, g; base_ring = RF)
+    if base_ring == BigFloat
+        base_ring = RF
+    end
+    #convert to polynomial in RealField/ArbField
+    R = parent(p)
+    n = length(gens(R))
+    Rnew, x = polynomial_ring(base_ring, n)
+    q = MPolyBuildCtx(Rnew)
+    for (c, ev) in zip(coefficients(p), exponent_vectors(p))
+        push_term!(q, generic_embedding(c,g, base_ring=base_ring), ev)
+    end
+    finish(q)
+end
+
+function generic_embedding(p::SampledMPolyRingElem, g; base_ring=BigFloat)
+    #convert to BigFloat evaluations
+    evals = generic_embedding.(p.evaluations, g, base_ring=base_ring)
+    R = SampledMPolyRing(base_ring, parent(p).samples)
+    return SampledMPolyRingElem(R, evals)
+end
+
+function generic_embedding(x::AbsSimpleNumFieldElem, g; base_ring=BigFloat)
+    # check whether g is indeed a generator of this field
+    p = defining_polynomial(parent(x))
+    @assert abs(sum(base_ring(Rational{BigInt}(coeff(p, k))) * g^k for k=0:degree(p))) < 1e-10
+    sum(base_ring(Rational{BigInt}(coeff(x,k))) * g^k for k=0:degree(parent(x))-1)
+end
+
+function generic_embedding(x::Union{QQFieldElem, ZZRingElem, T}, g; base_ring=BigFloat) where T <: Number
+    # this is only relevant with exact problems, so numbers are either AbsSimpleNumFieldElem, or rational/int
+    base_ring(Rational{BigInt}(x))
 end

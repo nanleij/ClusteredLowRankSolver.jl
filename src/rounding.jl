@@ -1,56 +1,29 @@
-export project_to_affine_space, is_valid_solution, detecteigenvectors, add_eigenvector_constraints!
+""" 
+    RoundingSettings(settings...)
 
-export basis_transformations, transform, undo_transform, exact_solution
-
-#TODO: where do we want this? I guess we don't want it to be part of the solver
-function sturm_sequence(p)
-    R = coefficient_ring(p)
-    P, t = polynomial_ring(R, :t)
-    list = [p]
-    push!(list, derivative(p))
-    for i = 2:degree(p)
-        push!(list, -rem(list[i-1],list[i]))
-    end
-    list
-end
-function number_of_zeros(p, a, b; eps=1//1000)
-    R = coefficient_ring(p)
-    P, t = polynomial_ring(R, :t)
-    a = a - eps
-    q(t) = div(p(t), gcd(p(t), derivative(p(t))))
-    k = sturm_sequence(q(t))
-    sa = [k[i](a) < 0 for i=1:length(k)]
-    sb = [k[i](b) < 0 for i=1:length(k)]
-    Va = sum([1 for i=1:length(sa)-1 if sa[i]!= sa[i+1]])
-    Vb = sum([1 for i=1:length(sb)-1 if sb[i]!= sb[i+1]])
-    return Va-Vb
-end
-
-#TODO: remove print_memory_info
-
-# Settings for rounding
-# 1) finding the kernel
-#  - kernel_lll : true -> use LLL to find relations. false (default): use RREF to find the kernel vectors
-#  - kernel_bits : (default: 1000) the maximum number of bits to be used in the LLL algorithm (for finding relations or finding the entries of the RREF)
-#  - kernel_errbound : (default : 1e-15) the allowed error for the kernel vectors. That is, the maximum entry of X v is in absolute value at most this
-#  - kernel_round_errbound : (default : 1e-15) the maximum allowed error when rounding the RREF entrywise
-#  - kernel_columnpivots : (default: false) use column pivoting in the RREF (experimental)
-#  - kernel_normalizebyaverage : (default: false) normalize the found kernel vectors by the entry closests to average before rounding (experimental)
-# 2) reduce the kernel vectors
-#  - reduce_kernelvectors : true (default) -> apply the reduction step
-#  - reduce_kernelvectors_cutoff: (default: 40) do reduction on the full matrix if its size is at most this cutoff. Otherwise do it on a submatrix
-#  - reduce_kernelvectors_stepsize: (default : 10) the number of extra columns to take into account in each iteration of the reduction step
-# 3) transform the problem and the solution
-# - normalize_transformation : (only over QQ, default true) multiply by a diagonal matrix to get a matrix over ZZ
-# 4) (only for non QQ fields): find a numerical solution in the field
-#  - regularization: (default 1e-30) use this regularization for solving the extended system
-# 5) round the solution to the affine space of constraints
-#  - pseudo : (default: true) use the psuedo inverse for rounding (this may give solutions with larger bitsize than needed)
-#  - redundancyfactor : (default : 6) take at least this times the number of constraints columns as potential pivots
-#  - pivots_modular : (default: true) find the pivot columns of the smaller matrix using RREF and modular arithmetic (false: QR)
-#  - QRprec : (default 1024) use this precision for the QR factorization to determine the pivot columns
-#  - QRtol : (default 1e-30) use this tolerance for determining whether columns are linearly dependent
-#TODO: do we want to keep the QR stuff?
+Settings for the rounding procedure:
+1. Finding the kernel
+    - `kernel_errbound`: (default: `1e-10`) the allowed error for the kernel vectors. That is, the maximum entry of Xv is in absolute value at most this
+    - `kernel_round_errbound`: (default: `1e-15`) the maximum allowed error when rounding the reduced row-echelon form entrywise
+    - `kernel_use_primal`: (default: `true`) use the primal solution to find the kernel vectors  (otherwise, use an SVD of the dual solution)
+    - `kernel_lll`: (default: `false`) if true, use the LLL algorithm to find the nullspace of the kernel. Otherwise, use the reduced row-echelon form to find kernel vectors.
+    - `kernel_bits`: (default: `1000`) the maximum number of bits to be used in the LLL algorithm (for finding relations or finding the entries of the RREF)
+2. Reducing the kernel vectors
+    - `reduce_kernelvectors`: (default: `true`) apply the reduction step or not
+    - `reduce_kernelvectors_cutoff`: (default: `400`) do reduction on the full matrix if its size is at most this cutoff. Otherwise do it on a submatrix
+    - `reduce_kernelvectors_stepsize`: (default: `200`) the number of extra columns to take into account in each iteration of the reduction step
+3. Transforming the problem and the solution
+    - `unimodular_transform`: (default: `true`) use a unimodular transform obtained in the reduction step
+    - `normalize_transformation`: (default: `true`) multiply by a diagonal matrix to get an integer transformation for the problem (for problems over QQ)
+4. Finding an approximate solution in the field
+    - `regularization`: (default: `1e-20`) use this regularization for solving the extended system
+    - `approximation_decimals`: (default: `40`) Approximate the numerical solution using this many digits, entrywise
+5. Rounding the solution to the affine space of constraints
+    - `redundancyfactor`: (default: `10`) take at least this times the number of constraints columns as potential pivots
+    - `pseudo`: (default: `true`) use the psuedo inverse for rounding (this may give solutions with larger bitsize than needed)
+    - `pseudo_columnfactor`: (default: `1.05`) For a system of r rows, use r * pseudo_columnfactor number of columns for the pseudo inverse
+    - `extracolumns_linindep`: (default: `false`) if true, take the extra columns linearly independent of each other (otherwise, random columns)
+"""
 struct RoundingSettings
     kernel_lll::Bool # use LLL to find kernel vectors (vs rref)
     kernel_bits::Int64
@@ -107,11 +80,11 @@ struct RoundingSettings
     end
 end
 
-function preprocess_rows(A, b; include_b=false)
+function preprocess_rows!(A, b; include_b=false)
     for r in axes(A,1)
-        l = lcm(Matrix(denominator.(A[r, :])))
+        l = lcm(Vector(denominator.(A[r, :])))
         if include_b
-            l = lcm(l, b[r,1])
+            l = lcm(l, denominator(b[r,1]))
         end
         A[r, :] *= l
         b[r, 1] *= l 
@@ -119,7 +92,7 @@ function preprocess_rows(A, b; include_b=false)
     return A, b
 end
 
-function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6)
+function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6; verbose=true)
     nconstraints = sum(x->length(x.samples), problem.constraints)
     x = vectorize(sol)
     nvars = length(x)
@@ -129,7 +102,7 @@ function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6)
     end
 
     # Select the elements on the diagonal and directly above/below it 
-    v = deepcopy(sol)
+    v = as_dual_solution(sol, zeros(Int,nvars))
     for (k, m) in v.matrixvars
         m = zero(m)
         for i in axes(m,1)
@@ -149,6 +122,11 @@ function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6)
             end
         end
     end 
+    for (k, m) in problem.objective.freecoeff
+        if m != 0
+            v.freevars[k] += 2
+        end
+    end 
 
 
     vvec = vectorize(v)
@@ -165,51 +143,71 @@ function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6)
 
     nneeded = redundancyfactor * nconstraints - length(pivot_cols)
     nneeded = max((redundancyfactor-2) * nconstraints, nneeded)
-    @info "Chose $(length(pivot_cols)) columns based on their position. Adding at most $nneeded columns randomly"
 
     notchosen = shuffle!([i for (i,val) in enumerate(vvec) if val == 0])
 	append!(pivot_cols, notchosen[1:min(nneeded, length(notchosen))])
 
-	@info "Chose $(length(pivot_cols)) out of $(length(vvec))"
+	verbose && println("  Reducing the system from $(length(vvec)) columns to $(length(pivot_cols)) columns")
     
     return pivot_cols
 end
 
-function project_to_affine_space(problem::Problem, sol::DualSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing)
-    column_selection = select_columns(problem, sol, settings.redundancyfactor)
-    println("Creating the rational system of equations...")
-    t = @elapsed A, b, x, column_selection = get_rational_system(problem, sol, FF, g; columns = column_selection, monomial_bases=monomial_bases, settings=settings)
-    println("Total: $t")
-    # print_memory_info()
-    x_extra, correct_slacks = project_to_affine_space(A,b; settings=settings)
-    for (j,i) in enumerate(column_selection)
-        x[i] += x_extra[j]
+function project_to_affine_space(problem::Problem, sol::DualSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing, verbose=true)
+    finished = false
+    extra_redundancy = 0
+    while !finished
+        column_selection = select_columns(problem, sol, settings.redundancyfactor + extra_redundancy, verbose=verbose)
+        A, b, x, column_selection = get_rational_system(problem, sol, FF, g; columns = column_selection, monomial_bases=monomial_bases, settings=settings, verbose=verbose)
+        # print_memory_info()
+        x_extra, correct_slacks, finished = project_to_affine_space(A,b; settings=settings, verbose=verbose)
+        if !finished && length(x) > length(column_selection)
+            # take more columns in the next iteration, since the system is inconsistent
+            extra_redundancy += 2
+            continue
+        elseif !finished && length(x) == length(column_selection)
+            error("The system is inconsistent but we took all the columns")
+        end
+        if finished
+            for (j,i) in enumerate(column_selection)
+                x[i] += x_extra[j]
+            end
+            # we still need to go back to the field (what's a good name?)
+            x_FF = xrational_to_field(x, FF)
+            return as_dual_solution(sol, x_FF), correct_slacks
+        end
     end
-    # we still need to go back to the field (what's a good name?)
-    x_FF = xrational_to_field(x, FF)
-    as_dual_solution(sol, x_FF), correct_slacks
 end
 
 
-function project_to_affine_space(A::QQMatrix, b::QQMatrix; settings::RoundingSettings=RoundingSettings())
-    print("Preprocessing to get an integer system...")
-    t = @elapsed A, b = preprocess_rows(A, b)
-    println(" $t")
+function project_to_affine_space(A::QQMatrix, b::QQMatrix; settings::RoundingSettings=RoundingSettings(), verbose=true)
+    verbose && print("  Preprocessing to get an integer system...")
+    t = @elapsed A, b = preprocess_rows!(A, b)
+    verbose && println(" ($(t)s)")
     # print_memory_info()
 
     
     rows = 1:nrows(A)
-    print("Finding the pivots of A using RREF mod p...")
+    verbose && print("  Finding the pivots of A using RREF mod p...")
     pivots = nothing
-    t = @elapsed pivots = find_pivots_modular(ZZ.(A))
-    println(" $t")
+    # find pivots and check that the system is consistent (then b is not a pivot column)
+    # we use deepcopy because we don't want to solve the system over ZZ 
+    # (that gives bigger numbers in the pseudoinverse)
+    t1 = @elapsed A2,b2 = preprocess_rows!(deepcopy(A),deepcopy(b), include_b=true)
+    Ab = hcat(A2, b2)
+    t = @elapsed pivots = find_pivots_modular(ZZ.(Ab))
+    verbose && println(" ($(t) $(t1) s)")
+    if size(Ab, 2) == pivots[end] #
+        println("  The system is inconsistent; taking more columns")
+        return zero_matrix(QQ, ncols(A), 1), false, false
+    end
     if isnothing(pivots)
         pivots = 1:size(A,2)
     end    
     if length(pivots) < nrows(A)
-        println("We did not find enough pivots ($(length(pivots)) instead of $(nrows(A)))")
-        # find linearly independent rows:
-        rows = find_pivots_modular(transpose(ZZ.(A)))
+        verbose && println("  We did not find enough pivots ($(length(pivots)) instead of $(nrows(A)))")
+        # find linearly independent rows: 
+        # (note that we can use the submatrix consisting of the pivot columns)
+        rows = find_pivots_modular(transpose(ZZ.(A[:, pivots])))
     end
     
     if settings.pseudo
@@ -226,29 +224,28 @@ function project_to_affine_space(A::QQMatrix, b::QQMatrix; settings::RoundingSet
                     nonpivots = shuffle(nonpivots)
                     extra = find_pivots_modular(ZZ.(A[rows, nonpivots]))
                     push!(extracolumns, nonpivots[extra])
-                    @info "Found $(length(extracolumns[end])) extra linearly independent columns (from $(length(nonpivots)))"
                 end
             else
-                extracolumns = shuffle([i for i=1:size(A,2) if !(i in pivots)])
+                #same format as with non-random columns
+                extracolumns = [shuffle([i for i=1:size(A,2) if !(i in pivots)])] 
             end
             
             
             column_subset = unique(vcat(pivots, extracolumns...))
             #take no more than  settings.pseudo_columnfactor * nrows(A) columns, so that we can also take 1.5
             column_subset = column_subset[1:min(length(column_subset), round(Int, settings.pseudo_columnfactor * nrows(A)))]
-            @info "Using $(length(column_subset)) columns for the pseudo-inverse"
             As = A[rows, column_subset]
-            bs = b[rows, 1]
+            bs = b[rows, 1:1]
             x = zero_matrix(QQ, ncols(A), 1)
             
-            print("Solving the system using the pseudoinverse (matrix of size $(size(As)))...")
+            verbose && print("  Solving the system of size $(size(As, 1)) x $(size(As, 2)) using the pseudoinverse...")
             t = @elapsed newx = solve_system_pseudoinverse(As,bs)
             x[column_subset, 1] = newx
-            println(" $t")
+            verbose && println(" $(t)s")
             # print_memory_info()
             correct_slacks = A * x == b
-            return x, correct_slacks
-        catch
+            return x, correct_slacks, true
+        catch e
             println()
             println("The system is rank-deficient")
         end
@@ -258,13 +255,13 @@ function project_to_affine_space(A::QQMatrix, b::QQMatrix; settings::RoundingSet
     Apiv = A[:, pivots]
     # print_memory_info()
 
-    # dixon is only integers or rationals; it works but is very slow with nf_elem (generic code)
+    # dixon is only integers or rationals; it works but is very slow with AbsSimpleNumFieldElem (generic code)
     # It is O(n^3(log(n)+log(N))^2), where A \in R^{n x n}, and |A_ij|, |b_i| <= N
     # So it is beneficial to keep the numbers small (i.e., simple approximations everywhere)
     nA = QQ.(Apiv)
     nb = QQ.(b)
     if nrows(Apiv) != ncols(Apiv)
-        @info "We solve the normal equations because the system is not square"
+        verbose && println("  We solve the normal equations because the system is not square")
         nb = transpose(nA) * nb
         nA = transpose(nA) * nA
         check_slacks=true
@@ -273,9 +270,9 @@ function project_to_affine_space(A::QQMatrix, b::QQMatrix; settings::RoundingSet
         check_slacks = false
         correct_slacks = true
     end
-    print("Solve_dixon for system of size $(nrows(Apiv)) x $(ncols(Apiv))... ")
-    t = @elapsed newx = solve_dixon(nA, nb)
-    println(t)
+    verbose && print("  Solve_dixon for system of size $(nrows(Apiv)) x $(ncols(Apiv))... ")
+    t = @elapsed newx = Nemo._solve_dixon(nA, nb)
+    verbose && println(" $(t)s")
     if check_slacks
         correct_slacks = nA * newx == nb
     end
@@ -285,7 +282,7 @@ function project_to_affine_space(A::QQMatrix, b::QQMatrix; settings::RoundingSet
         x[i] = newx[j]
     end
 
-    return x, correct_slacks
+    return x, correct_slacks, true
 end
 
 function find_pivots_modular(A::ZZMatrix; maxprimes = 3)
@@ -297,8 +294,8 @@ function find_pivots_modular(A::ZZMatrix; maxprimes = 3)
         pivots = find_pivots_modular(A, p)
         if length(pivots) == nrows(A)
             if numps > 1
-                println("Needed to do the RREF for $numps primes")
-                println("Succeeded with p = $p")
+                println("  Needed to do the RREF for $numps primes")
+                println("  Succeeded with p = $p")
             end
             return pivots
         elseif numps >= maxprimes
@@ -344,24 +341,23 @@ function solve_system_pseudoinverse(A,b)
     # So we need to compute v = A^T (AA^T)^(-1) b 
     # When the columns are linearly independent instead, v = (A^TA)^-1 A^T b
     At = transpose(A)
-
     if ncols(A) > nrows(A)
         AAt = A*At
-        Dr = matrix(QQ, Diagonal([QQ(1)//gcd(Matrix(numerator.(AAt[:,k]))) for k in 1:size(AAt,2)]))
+        Dr = matrix(QQ, Diagonal([QQ(1)//gcd(Vector(numerator.(AAt[:,k]))) for k in 1:size(AAt,2)]))
         AAt = AAt * Dr
-        Dl = matrix(QQ, Diagonal([QQ(1)//gcd(Matrix(numerator.(AAt[k,:]))) for k in 1:size(AAt,1)]))
+        Dl = matrix(QQ, Diagonal([QQ(1)//gcd(Vector(numerator.(AAt[k,:]))) for k in 1:size(AAt,1)]))
         AAt = Dl * AAt
         newb = Dl * b
-        y = solve_dixon(AAt, newb)
+        y = Nemo._solve_dixon(AAt, newb)
         v = At * (Dr * y)
     else
         AtA = At * A
-        Dr = matrix(QQ, Diagonal([QQ(1)//gcd(Matrix(numerator.(AtA[:,k]))) for k in 1:size(AtA,2)]))
+        Dr = matrix(QQ, Diagonal([QQ(1)//gcd(Vector(numerator.(AtA[:,k]))) for k in 1:size(AtA,2)]))
         AtA = AtA * Dr
-        Dl = matrix(QQ, Diagonal([QQ(1)//gcd(Matrix(numerator.(AtA[k,:]))) for k in 1:size(AtA,1)]))
+        Dl = matrix(QQ, Diagonal([QQ(1)//gcd(Vector(numerator.(AtA[k,:]))) for k in 1:size(AtA,1)]))
         AtA = Dl * AtA
         newb = Dl * (At * b)
-        y = solve_dixon(AtA, newb)
+        y = Nemo._solve_dixon(AtA, newb)
         v = Dr * y
     end
     return v
@@ -377,7 +373,7 @@ function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=tru
             for i in eachindex(s)
                 if !iszero(s[i])
                     success = false
-                    @info "Constraint $i is not satisfied"
+                    @warn "Constraint $i is not satisfied"
                 end
             end
         end
@@ -388,8 +384,6 @@ function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=tru
             print(" fail")
         end
         println(" ($t)")
-    else
-        println("We did not check the slacks")
     end
 
     println("Checking sdp constraints")
@@ -403,8 +397,8 @@ function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=tru
 
             pd = checkpd_cholesky(matr; FF=FF, g=g)
             if !pd
-                evs = eigvals(Matrix{BigFloat}(to_BigFloat.(matr, g)))
-                @info "$k failed, smallest eigenvalues are $(sort(evs)[1:min(3, length(evs))])"
+                evs = eigvals(Matrix{BigFloat}(generic_embedding.(matr, g; base_ring=BigFloat)))
+                @warn "$k failed, smallest eigenvalues are $(sort(evs)[1:min(3, length(evs))])"
                 push!(failures, k)
                 success = false
             end
@@ -422,7 +416,7 @@ end
 
 is_negative(x::QQFieldElem, g) = x < 0
 
-function is_negative(x::nf_elem, gs)
+function is_negative(x::AbsSimpleNumFieldElem, gs)
     for cur_r in gs
         x_arb = sum(coeff(x,k) * cur_r^k for k=0:degree(parent(x))-1)
         if Nemo.is_negative(x_arb)
@@ -437,7 +431,7 @@ end
 root_balls(FF::QQField, g) = [1]
 
 function root_balls(FF, g, prec=256, max_prec=2^14)
-    gs = arb[]
+    gs = ArbFieldElem[]
     while prec <= max_prec
         R, y = polynomial_ring(AcbField(prec), :y)
         min_poly = defining_polynomial(FF)
@@ -461,7 +455,7 @@ function checkpd_cholesky(A; FF=QQ, g=1, prec=256, maxprec=2^14)
         F = ArbField(prec)
         if FF != QQ
             g = F(gs[i])
-            B = matrix(F, to_arb.(A, g))
+            B = matrix(F, generic_embedding.(A, g, base_ring=F))
         else
             B = matrix(F, F.(A))
         end
@@ -478,6 +472,12 @@ function checkpd_cholesky(A; FF=QQ, g=1, prec=256, maxprec=2^14)
 end
 
 
+"""
+    clindep(v::Matrix{T}, bits, errbound)
+
+Find relations between the rows of v using at most `bits` bits, 
+so that taking the linear combination gives a vector with entries at most errbound in absolute value.
+"""
 function clindep(v::Matrix{T}, bits, errbound) where T
     pow = 9
     F = AcbField(2^pow)
@@ -558,7 +558,7 @@ function roundx(A,b,x,g,deg; regularization=1e-30, prec=512, power=40)
     B = Af[:, m+1:end]
 
     lhs = transpose(B) * B + arbs(regularization) * one(matrix(arbs, zeros(ncols(B), ncols(B))))
-    y = solve(lhs, transpose(B) * rhs)
+    y = solve(lhs, transpose(B) * rhs, side=:right)
 
     #now y = x_1, x_2, ..., x_{deg-1}
     y = Matrix{BigFloat}(y) # the floating point approximation of the rational numbers
@@ -567,13 +567,18 @@ function roundx(A,b,x,g,deg; regularization=1e-30, prec=512, power=40)
     return xfinal
 end
 
+"""
+    detecteigenvectors(primalblock, dualblock; FF=QQ, g=1, settings::RoundingSettings)
+
+Find exact eigenvectors of `dualblock` over the field `FF` with approximate generator `g`.
+"""
 function detecteigenvectors(primalblock::Matrix{T}, dualblock::Matrix{T};
             FF=QQ, g=1, check_dimensions=false, settings::RoundingSettings) where T
     deg = degree(FF)
     z = gen(FF)
 
     # Without primalblock:
-    if !settings.kernel_use_primal
+    if !settings.kernel_use_primal || maximum(abs.(primalblock)) > 1/sqrt(settings.kernel_round_errbound)
         tmp = svd(dualblock)
         num_evs = count(x->abs(x)<settings.kernel_errbound, tmp.S)
         if num_evs  == 0
@@ -584,6 +589,8 @@ function detecteigenvectors(primalblock::Matrix{T}, dualblock::Matrix{T};
         mat = copy(primalblock)
     end
 
+    #TODO: check out whether we can do this with LU; 
+    # I think the main problem is handling small numbers (considering <settings.kernel_errbound to be 0)
     RowEchelon.rref!(mat, settings.kernel_errbound)
     
     #keep only the nonzero rows; those are a basis for the kernelvectors
@@ -607,7 +614,7 @@ function detecteigenvectors(primalblock::Matrix{T}, dualblock::Matrix{T};
 
     # test whether kernel_vecs are really kernel vectors
     for (i,kv) in enumerate(kernel_vecs)
-        kv_float = to_BigFloat.(kv, g)
+        kv_float = generic_embedding.(kv, g, base_ring=BigFloat)
         res = dualblock * kv_float
         if maximum(abs.(res)) > settings.kernel_errbound
             @show maximum(abs.(kv_float))
@@ -712,17 +719,25 @@ function detecteigenvectors(block::Matrix{T}, bits::Int=10^3, errbound=1e-15; FF
     if length(list) != deg*size(m,2)
         display(block)
         display(list)
-        println("Warning: not all kernel vectors detected!")
+        @warn "Not all kernel vectors detected!"
     end
     [FtoQ_exact * v for v in list]
 end
 
-function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings())
+"""
+    basis_transformations(primalsol, dualsol; FF=QQ, g=1, settings=RoundingSettings())
+
+Return basis transformations for each matrix variable in dualsol such that the first few columns 
+of the transformation correspond to kernel vectors. The result is a dictionary with keys corresponding to 
+the variables of dualsol, and values `(transpose(B), B^-1, num_kernelvecs)` so that `(transpose(B) X B)[1:num_kernelvecs, 1:num_kernelvecs]`
+is approximately zero.
+"""
+function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings(),verbose=true)
     Bs = Dict()
     for k in sort(collect(keys(sol.matrixvars)), by=k->(size(sol.matrixvars[k],1), hash(k)))
-        println("Start with block ", k)
         m = matrixvar(sol, k)
         pm = matrixvar(primalsol, k)
+        verbose && println("  Block ", k, " of size $(size(m,1)) x $(size(m,2))")
         zerolist = Int[]
         list = Vector{typeof(FF(1))}[]
         if settings.kernel_lll
@@ -768,14 +783,14 @@ function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=
             end
             maxnum = maximum(abs.(numerator.(coefficients)), init=0)
             maxden = maximum(denominator.(coefficients), init=0)
-            println("For $k ($(length(list)) kernel vectors for a size $N matrix), the maximum numerator and denominator are $maxnum and $maxden")
+            verbose && length(list) > 0 && println("    Block $k has $(length(list)) kernel vectors. The maximum numerator and denominator are $maxnum and $maxden")
 
             if settings.kernel_lll && degree(FF) > 1
                 # we only have to find linearly independent vectors
                 # with the original method and a field of degree > 1.
                 # With the RREF, the vectors are automatically linearly independent
                 AF = ArbField(512)
-                float_vecs = [to_arb.(v, AF(g)) for v in list]
+                float_vecs = [generic_embedding.(v, AF(g), base_ring=AF) for v in list]
                 orthogonalvectors = []
                 lin_indep_list = Int[]
                 for i in eachindex(float_vecs)
@@ -788,11 +803,11 @@ function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=
                         push!(orthogonalvectors, float_vecs[i])
                     end
                 end              
-                println("Finished GS")
+                verbose && println("  Finished GS to find linearly independent kernel vectors")
                 list = list[lin_indep_list]
             end
             if length(list) > 0
-                B, num_kernelvecs = simplify_kernelvectors(matrixvar(sol, k), list, FF=FF, g=g, settings=settings)
+                B, num_kernelvecs = simplify_kernelvectors(matrixvar(sol, k), list, FF=FF, g=g, settings=settings, verbose=verbose)
                 B = FF.(B) #to have all options give a consistent type back
             else
                 num_kernelvecs = 0
@@ -827,7 +842,7 @@ function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=
     Bs
 end
 
-function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingSettings())
+function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingSettings(), verbose=true)
     # 1) go to nullspace using the structure in RREF
     # 2) Clear denominators
     # 3) Go to kernel vectors using HNF with nice transformation matrix (HNF on larger matrix)
@@ -905,7 +920,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
                     end
                     reduced_kernelvecs = lll(ZZ.(reduced_kernelvecs))
                     maxnum = maximum(abs.(reduced_kernelvecs))
-                    @info "The transform needed for the first bunch of entries did not make the whole matrix integer. The maximum is $maxnum (compared to $initial_maximum_number)"
+                    verbose && @info "  The transform needed for the first bunch of entries did not make the whole matrix integer. The maximum is $maxnum (compared to $initial_maximum_number)"
                     if maxnum <= initial_maximum_number
                         B = transpose(reduced_kernelvecs)
                         find_extra_vectors = true
@@ -946,7 +961,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         # find linearly independent set of basis vectors from the given ones
         # starting at the kernel vectors, then continuing with the non kernel vectors
         AF = ArbField(512)
-        float_vecs = [to_arb.(x, AF(g)) for x in finalvectors]
+        float_vecs = [generic_embedding.(x, AF(g), base_ring=AF) for x in finalvectors]
         if find_extra_vectors
             # add standard basis vectors at the end
             for i=1:N
@@ -963,7 +978,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
             float_vecs = [float_vecs[end-kernel_dim+1:end]..., float_vecs[1:end-kernel_dim]...]
         end
         # check whether the first kernel_dim float_vecs are kernel vectors
-        maxerror = maximum(maximum(abs.(dm * Matrix{BigFloat}(v))) for v in float_vecs[1:kernel_dim])
+        maxerror = maximum(maximum(abs.(dm * Vector{BigFloat}(v))) for v in float_vecs[1:kernel_dim])
         @assert maxerror < settings.kernel_errbound "The reduced kernel vectors are not kernel vectors (maximum error = $maxerror)"
         # orthogonalize and make new list with only the orthogonalized vectors
         indices = []
@@ -971,7 +986,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         for i in eachindex(float_vecs)
             # orthogonalize with respect to the vectors in orthogonalvectors
             for v in orthogonalvectors
-                float_vecs[i] -= (dot(v, float_vecs[i]) // dot(v,v)) * v
+                float_vecs[i] -= (dot(v, float_vecs[i]) // dot(v,v)) .* v
             end
             if dot(float_vecs[i], float_vecs[i]) > 1e-40
                 push!(indices, i)
@@ -983,6 +998,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         end
         finalvectors = finalvectors[indices] # kernel vectors are at the start
         B = hcat(finalvectors...)
+        B = matrix(FF, B)
     elseif find_extra_vectors
         # find_extra_vectors is true, so all the current vectors should be kernel vectors
         maxerror = maximum(maximum(abs.(dm * Matrix{BigFloat}(B[:, i]))) for i=1:ncols(B))
@@ -1021,10 +1037,10 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         # we want the first bunch of vectors to be the kernel vectors;
         # by default they are at the end
         B = hcat(B[:, end-kernel_dim+1:end], B[:, 1:end-kernel_dim])
-        maxerror = maximum(maximum(abs.(dm * Matrix{BigFloat}(B[:, i]))) for i=1:kernel_dim)
+        maxerror = maximum(maximum(abs.(dm * Vector{BigFloat}(B[:, i]))) for i=1:kernel_dim)
         @assert maxerror < settings.kernel_errbound "The reduced kernel vectors are not kernel vectors (maximum error = $maxerror)"
     end
-    @info "The maximum number of the basis transformation vectors is $final_maxnum"
+    verbose && settings.reduce_kernelvectors && println("    After reduction, the maximum number of the basis transformation matrix is $final_maxnum")
     return B, FF_kerneldim
 end
 function reduction_step(kernelvecs; FF=QQ, g=1)
@@ -1033,7 +1049,7 @@ function reduction_step(kernelvecs; FF=QQ, g=1)
 
     #clear denominators
     for i=1:nrows(ns)
-        ns[i, :] *= lcm(Matrix(denominator.(ns[i, :])))
+        ns[i, :] *= lcm(Vector(denominator.(ns[i, :])))
     end
     # Go back to kernel vectors using a nice transformation
     # the last kernel_dim columns of B correspond to the kernel vectors
@@ -1080,7 +1096,16 @@ function nullspace_fromrref(M::QQMatrix)
     # rank, A = rref(M)
     if is_rref(M)
         A = M
-        rank = min(m,n)
+        rank = 0
+        for i=1:m
+            for j=1:n
+                # rank increases if there is a nonzero element in this row
+                if A[i,j] != 0
+                    rank+=1
+                    break
+                end
+            end
+        end
     else
         rank, A = Nemo.rref(M)
     end
@@ -1140,21 +1165,26 @@ end
 
 # TODO: first submatrix of Binv, then multiply
 function transform(p::LowRankMatPol, Binv, s)
-    leftevs = [(Binv*v)[s+1:end] for v in p.leftevs]
-    rightevs = [(Binv*v)[s+1:end] for v in p.rightevs]
-    LowRankMatPol(p.eigenvalues, leftevs, rightevs)
+    vs = [(Binv*v)[s+1:end] for v in p.vs]
+    ws = [(Binv*v)[s+1:end] for v in p.ws]
+    LowRankMatPol(p.lambda, vs, ws)
 end
 
 #TODO: check if this is needed
-# Nemo.copy(a::QQFieldElem) = deepcopy(a) #Q: do we need this?
+# Nemo.copy(a::QQFieldElem) = deepcopy(a) 
 
 function transform(p::Matrix{T}, Binv, s;g=1) where T
     if T == BigFloat
-        Binv = to_BigFloat.(Binv,g)
+        Binv = generic_embedding.(Binv,g, base_ring=BigFloat)
     end
     Binv[s+1:end, :]*p*transpose(Binv)[:, s+1:end]
 end
 
+"""
+    transform(problem, Bs)
+
+Transform the problem using the basis transformations Bs obtained from `basis_transformations`.
+"""
 function transform(problem::Problem, Bs)
     matrixcoeff = Dict()
     for (k, m) in problem.objective.matrixcoeff
@@ -1178,7 +1208,7 @@ function transform(problem::Problem, Bs)
 end
 
 function transform(sol::DualSolution{T}, Bs; g=1) where T
-    matrixcoeff = Dict{Block,Matrix{T}}()
+    matrixcoeff = Dict{Any,Matrix{T}}()
     for (k, m) in sol.matrixvars
         if Bs[k][3] < size(m, 1)
             matrixcoeff[k] = transform(m, Bs[k][1], Bs[k][3], g=g)
@@ -1188,7 +1218,7 @@ function transform(sol::DualSolution{T}, Bs; g=1) where T
 end
 
 function undo_transform(sol::DualSolution{T}, Bs; FF=QQ) where T
-    matrixcoeff = Dict{Block,Matrix{T}}()
+    matrixcoeff = Dict{Any,Matrix{T}}()
     for k in keys(Bs)
         N = size(Bs[k][1], 1)
         M = [sol.base_ring(0) for i=1:N, j=1:N]
@@ -1232,40 +1262,44 @@ function convert_system(FF, A, b)
     return Atot, btot
 end
 
-function get_rational_system(problem::Problem, dualsol::DualSolution, FF::QQField, g=1; columns = nothing, monomial_bases=nothing, settings=RoundingSettings())
+function get_rational_system(problem::Problem, dualsol::DualSolution, FF::QQField, g=1; columns = nothing, monomial_bases=nothing, settings=RoundingSettings(), verbose=true)
     # It would be best if linearsystem would return type information
     if isnothing(columns) # take all columns
         columns = 1:length(vectorize(dualsol))
     end
     x = vectorize(dualsol)
     x = roundx(x, power=settings.approximation_decimals)
-    A, b = partial_linearsystem(problem, as_dual_solution(dualsol, x), columns; monomial_bases=monomial_bases, verbose=true)
+    verbose && print("  Constructing the linear system...")
+    t = @elapsed A, b = partial_linearsystem(problem, as_dual_solution(dualsol, x), columns; monomial_bases=monomial_bases)
+    verbose && println(" ($(t)s)")
 
     return A, b, x, columns
 end
 
 #Here g is a numerical approximation of the generator of FF
-function get_rational_system(problem::Problem, dualsol::DualSolution, FF::AnticNumberField, g; columns=nothing, monomial_bases=nothing, settings=RoundingSettings())
+function get_rational_system(problem::Problem, dualsol::DualSolution, FF::AbsSimpleNumField, g; columns=nothing, monomial_bases=nothing, settings=RoundingSettings(), verbose=true)
     #make sure that g is indeed an approximation of the generator
     p = defining_polynomial(FF)
     val = sum(BigFloat(coeff(p,k)) * g^k for k=0:degree(p))
     @assert abs(val) < 1e-10
     # get the linear system and convert it
     # Note that now we need to get the whole system, since we need to get an approximate solution to the extended system
-    if isnothing(monomial_bases)
-        A, b = linearsystem(problem, FF)
+    verbose && print("  Constructing the linear system...")
+    t = @elapsed if isnothing(monomial_bases)
+        A, b = linearsystem(problem, FF=FF)
     else
-        A, b = linearsystem_coefficientmatching(problem, monomial_bases, FF)
+        A, b = linearsystem_coefficientmatching(problem, monomial_bases, FF=FF)
     end
+    verbose && println(" ($(t)s)")
     A = FF.(A)
     b = FF.(b)
     nvars = ncols(A)
     A, b = convert_system(FF, A, b)
     x = vectorize(dualsol)
 
-    print("Computing an approximate solution in the extension field...")
+    verbose && print("  Computing an approximate solution in the extension field...")
     t = @elapsed x_rounded = roundx(A, b, x, g, degree(FF), regularization=settings.regularization, prec=precision(first(x)))
-    println(" $t")
+    verbose && println(" ($(t)s)")
     # convert to error vector and smaller system
     b -= A*matrix(QQ, length(x_rounded), 1, x_rounded)
     if !isnothing(columns)
@@ -1299,29 +1333,36 @@ function print_memory_info()
     println("Total memory usage: $(mem/factor) $s")
 end
 
-#TODO: give verbose option to functions like basis_transformations and project_to_affine_space
+"""
+    exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::DualSolution; transformed=false, FF = QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing)
+
+Compute and return an exact solution to the problem, given a primal solution, dual solution and a field `FF` with approximate generator `g`.
+Return `(success, exactdualsol)` if `transformed=false`, and `(success, pd_transformed_exactsolution, transformations)` if `transformed=true`.
+"""
 function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::DualSolution; 
             transformed=false, 
             FF = QQ, g=1, 
             settings::RoundingSettings=RoundingSettings(),
             monomial_bases=nothing,
             verbose=true)
-    verbose && println("Starting computation of basis transformations")
+    verbose && println("** Starting computation of basis transformations **")
     # print_memory_info()
-    t = @elapsed Bs = basis_transformations(primalsol, dualsol, FF=FF, g=g, settings=settings)
-    verbose && println("Finished computation of basis transformations ($(t)s)")
+    t = @elapsed Bs = basis_transformations(primalsol, dualsol, FF=FF, g=g, settings=settings, verbose=verbose)
+    verbose && println("** Finished computation of basis transformations ($(t)s) **")
     # print_memory_info()
-    verbose && print("Transforming dualsol... ")
+    verbose && print("** Transforming the problem and the solution **")
+    # verbose && print("Transforming dualsol... ")
     t = @elapsed transformed_dualsol = transform(dualsol,Bs, g=g)
-    verbose && println("done ($(t)s)")
+    # verbose && println("done ($(t)s)")
     # print_memory_info()
-    verbose && print("Transforming problem... ")
-    t = @elapsed transformed_problem = transform(problem, Bs)
-    verbose && println("done ($(t)s)")
+    # verbose && print("Transforming problem... ")
+    t += @elapsed transformed_problem = transform(problem, Bs)
+    verbose && println(" ($(t)s)")
     # print_memory_info()
-	verbose && println("Starting projection into affine space")
-    t = @elapsed exact_sol, correct_slacks = project_to_affine_space(transformed_problem, transformed_dualsol, FF=FF, g=g, settings=settings, monomial_bases=monomial_bases)
-	verbose && println("Finished projection into affine space ($(t)s)")
+	verbose && println("** Projection the solution into the affine space **")
+    t = @elapsed exact_sol, correct_slacks = project_to_affine_space(transformed_problem, transformed_dualsol, FF=FF, g=g, settings=settings, monomial_bases=monomial_bases, verbose=verbose)
+	verbose && println("** Finished projection into affine space ($(t)s) **")
+    verbose && println("** Checking feasibility **")
     if !correct_slacks
         verbose && println("The slacks are nonzero")
     else
@@ -1337,38 +1378,40 @@ function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::Du
     end
 end
 
-#TODO: replace to_arb and to_BigFloat by generic_embedding?
-# This basically is generic_embedding.
-# Q: do we want generic_embedding in the solver interface?
-# That makes it much easier to work with number fields
-function to_arb(x::nf_elem, g)
-    sum(coeff(x,k) * g^k for k=0:degree(parent(x))-1)
-end
-function to_arb(x::QQFieldElem, g::arb)
-    parent(g)(x)
-end
-# For converting an exact problem to a floating point SDP
-#TODO: see to_arb (replace by generic_embedding?)
-function to_BigFloat(x::nf_elem,g)
-    F = parent(x)
-    sum(BigFloat(coeff(x,k))*g^k for k=0:degree(F)-1)
-end
-function to_BigFloat(x::QQFieldElem,g)
-    BigFloat(x)
-end
+# #TODO: replace to_arb and to_BigFloat by generic_embedding?
+# # This basically is generic_embedding.
+# # Q: do we want generic_embedding in the solver interface?
+# # That makes it much easier to work with number fields
+# function to_arb(x::AbsSimpleNumFieldElem, g)
+#     sum(coeff(x,k) * g^k for k=0:degree(parent(x))-1)
+# end
+# function to_arb(x::QQFieldElem, g::ArbFieldElem)
+#     parent(g)(x)
+# end
+# # For converting an exact problem to a floating point SDP
+# #TODO: see to_arb (replace by generic_embedding?)
+# function to_BigFloat(x::AbsSimpleNumFieldElem,g)
+#     F = parent(x)
+#     sum(BigFloat(coeff(x,k))*g^k for k=0:degree(F)-1)
+# end
+# function to_BigFloat(x::QQFieldElem,g)
+#     BigFloat(x)
+# end
 
 # go to a new polynomial ring
 # we need this for transforming the problem if the kernel vectors have non-rational elements
-function Base.:*(x::nf_elem, y::QQMPolyRingElem)
+function Base.:*(x::AbsSimpleNumFieldElem, y::QQMPolyRingElem)
     FF = parent(x)
     R = parent(y)
     n = length(gens(R))
     R2, z = polynomial_ring(FF, n)
-    y2 = R2(0)
+    P = MPolyBuildCtx(R2)
+    # y2 = R2(0)
     for (c,ev) in zip(coefficients(y), exponent_vectors(y))
-        y2 += x * FF(c) * prod(z .^ ev)
+        push_term!(P, x * FF(c), ev)
+        # y2 += x * FF(c) * prod(z .^ ev)
     end
-    return y2
+    return finish!(P)
 end
 
 

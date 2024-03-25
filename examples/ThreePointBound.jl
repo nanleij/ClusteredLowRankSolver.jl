@@ -1,303 +1,171 @@
 module ThreePointBound
 
-using ClusteredLowRankSolver, AbstractAlgebra, BasesAndSamples
+using Random, ClusteredLowRankSolver, Nemo
 
-export three_point_spherical_cap
+export three_point_spherical_codes
 
-
-function Q(n::Int, k::Int, u, v, t)
-    R, x = polynomial_ring(RealField, "x")
+function Q(FF, n::Int, k::Int, u, v, t)
+    R, x = polynomial_ring(FF, :x)
     p = basis_gegenbauer(k, n, x)[end]
     sum(coeff(p, i) * ((1-u^2)*(1-v^2))^div(k-i, 2)*(t-u*v)^i for i=0:length(p)-1)
+end
+
+function Smat(FF, n, k, d, u, v, t)
+    mat =  Q(FF, n-1, k, u, v, t) .* (m(v, d-k) * transpose(m(u, d-k)) + m(u, d-k) * transpose(m(v, d-k)))
+    mat += Q(FF, n-1, k, t, u, v) .* (m(t, d-k) * transpose(m(u, d-k)) + m(u, d-k) * transpose(m(t, d-k)))
+    mat += Q(FF, n-1, k, t, v, u) .* (m(t, d-k) * transpose(m(v, d-k)) + m(v, d-k) * transpose(m(t, d-k)))
+    1//6 * mat
 end
 
 function m(w, d)
     [w^k for k=0:d]
 end
 
-p(u, costheta) = (u+1)*(costheta-u)
+p(u, costheta) = p(u, -1, costheta)
+p(u, a, b) = (u-a)*(b-u)
 
-function three_point_spherical_cap(n, d, costheta, prec=256, all_free=false; basis=1, grid_option=2, N=2d, verbose=false, kwargs...)
-    #basis: 1 = monomial
-    #       2 = chebyshev
-    #       3 = gegenbauer
-    # These are orthogonalized with respect to the sample points, so it shouldn't really matter
-    setprecision(BigFloat,prec)
-    FF = RealField
+"""
+    three_point_spherical_codes(n, costheta, d2, d3, kwargs])
 
-    R, (u,v,t) = polynomial_ring(FF, ["u","v","t"])
-    if verbose
-        println("Creating the polynomials for F_k...")
+Compute an upper bound on the number of caps of size costheta that fit on the sphere S^{n-1}.
+The generated SDP uses the uvt S_3 symmetry.
+
+# Arguments
+- `n`: the dimension
+- `costheta`: the size of the spherical caps.
+- `d2`: half the degree of the polynomials used to model the one variable part of the function.
+        Use -1 to disable this completely.
+- `d3`: half the degree of the polynomials used to model the three variable part of the function.
+        Use -1 to disable this completely.
+- `N2=max(d2,d3)`: half the degree used for the univariate SOS certificate.
+- `N3=d3`: half the degree used for the trivariate SOS certificate.
+- `prec`: the precision in bits used to setup and solve the SDP.
+- `kwars': additional arguments to give to the solver.
+"""
+function three_point_spherical_codes(
+        n,
+        costheta,
+        d2,
+        d3;
+        FF=QQ,
+        kwargs...)
+    N2 = max(d2, d3)
+    N3 = d3
+
+    Random.seed!(1935) # make the samples reproducible
+
+    constraints = []
+
+    @info "Creating the univariate constraint"
+    W, w = polynomial_ring(FF, :w)
+
+    f = Dict()
+    for k=0:d3
+        Tmat = 3Smat(FF, n, k, d3, w, w, 1)
+        f[(:F, k)] = Tmat
     end
-    F = Dict()
-    for k=0:d
-        #Instead of having both e.g. m(v,d-k) * m(u,d-k)^T and m(t,d-k) * m(u,d-k)^T, we combine them
-        F[Block((:F,k))] = LowRankMatPol([R(1) for i=1:3],
-                                    [m(u,d-k), m(v,d-k), m(t,d-k)], #combine the vectors which are used multiple times
-                                    [1//6*(Q(n-1, k, u, v, t) .* m(v,d-k) + Q(n-1, k, u, t, v) .* m(t,d-k)),
-                                    1//6*(Q(n-1, k, v, u, t) .* m(u,d-k) + Q(n-1, k, v, t, u) .* m(t,d-k)),
-                                    1//6*(Q(n-1, k, t, v, u) .* m(v,d-k) + Q(n-1, k, t, u, v) .* m(u,d-k))])
+    if d2 >= 0
+        basis = basis_gegenbauer(2d2, n, w)
+        for k = 0:2d2
+            f[(:a, k)] = LowRankMatPol([basis[k+1]], [[1]])
+        end
     end
-    #The vectors which construct the Pi_pi matrices. We have to tensor them with a symmetric basis for the E_pi matrices
-    symmetry_weights = [[[R(1)]],
-                        [[(u-v)*(v-t)*(t-u)]],
-                        [[1/sqrt(FF(2))*(2u-v-t),1/sqrt(FF(2))*(2v*t-u*t-u*v)],
-                            [sqrt(FF(3)/FF(2))*(v-t),sqrt(FF(3)/FF(2))*(u*t-u*v)]]]
-    #The polynomial weights which describe the domain
-    weights = [R(1),
+    basis1d = basis_chebyshev(2N2, w)
+    samples1d = sample_points_chebyshev(2N2, -1, 1)
+    samples1d = [floor(BigInt, 10^4*x)//10^4 for x in samples1d]
+
+    if N2 >= 0
+        f[(:univariatesos, 1)] = LowRankMatPol([1], [basis1d[1:N2+1]])
+    end
+    if N2 >= 1
+        f[(:univariatesos, 2)] = LowRankMatPol([p(w, costheta)], [basis1d[1:N2]])
+    end
+
+    push!(constraints, Constraint(-1, f, Dict(), samples1d))
+
+    @info "Constructing trivariate constraint"
+    # F(u,v,t)  + weighted sos = 0
+
+    R, (u, v, t) = polynomial_ring(FF, [:u, :v, :t])
+
+    equivariants = [[[R(1)]], [[(u-v)*(v-t)*(t-u)]], [[2u-v-t, 2v*t-u*t-u*v], [v-t, u*t-u*v]]]
+
+    factors = [[1], [1], [1//2, 3//2]]
+
+    weights = [
+        R(1),
         p(u,costheta)+p(v,costheta)+p(t,costheta),
         p(u,costheta)*p(v,costheta)+p(v,costheta)*p(t,costheta)+p(t,costheta)*p(u,costheta),
         p(u,costheta)*p(v,costheta)*p(t,costheta),
         2u*v*t + 1 - u^2 - v^2 - t^2]
-    #The basis in 1 variable used for the symmetric basis
-    R1, (x,) = polynomial_ring(FF,["x"])
-    if basis == 1
-        basis1d_sym = m(x, 2d)
-    elseif basis == 2
-        basis1d_sym = basis_chebyshev(2d, x)
-    elseif basis == 3
-        basis1d_sym = basis_gegenbauer(2d, n, x)
-    elseif basis == 4
-        basis1d_sym = basis_laguerre(2d, BigFloat(n)/2-1,x)
-        max_coef = [max(coefficients(basis1d_sym[i])...) for i = 1:length(basis1d_sym)]
-        basis1d_sym = [max_coef[i]^(-1) * basis1d_sym[i] for i = 1:length(basis1d_sym)]
-    else
-        # also monomial basis for wrong input
-        println("The option 'basis = $basis' was not recognized, we use the monomial basis as initial basis.")
-        basis1d_sym = m(x, 2d)
-    end
-    if verbose
-        println("Creating the polynomials for the SOS basis and the potential samples...")
-    end
-    # with the smart_eval basis, we don't compute the polynomials explicitely, but just the evaluations.
-    sym_basis_smart_eval = [(u,v,t) -> basis1d_sym[deg-3k-2j+1](u+v+t) * basis1d_sym[j+1](u*v+v*t+u*t) * basis1d_sym[k+1](u*v*t) for deg=0:2d for k=0:div(deg,3) for j=0:div(deg-3k,2)]
 
-    # we don't have a lot of double samples point due to symmetry, because we don't use exactly the same point sets for the x,y and z
-    #We create a grid of sample points. either equally spaced or chebyshev-like
-    if grid_option == 1
-        samples = [-1 .+ (1+costheta) .* [i/N,j/N,k/N] for i=0:N for j=i:N for k=j:N] #this is kinda useless
-    elseif grid_option == 2
-        cheb_points = [vcat(sample_points_chebyshev(N+k,-1,costheta)...) for k=0:2]
-        samples = [[cheb_points[1][i+1], cheb_points[2][j+1], cheb_points[3][k+1]] for i=0:N for j=0:N+1 for k=0:N+2]
-    end
-    samples = [
-        s for s in samples if (1 + 2 * u * v * t - u^2 - v^2 - t^2)(s...) >= 0
-    ] # We only keep the samples in the domain. This is not really needed
-    #The degrees of the polynomials. They are ordered on degree, so we can look for the last one to determine the length of the bases we need later.
-    degrees = [deg for deg=0:2d for k=0:div(deg,3) for j=0:div(deg-3k,2)]
-    last_degree = [findlast(x -> x == k, degrees) for k=0:2d]
+    tmp = length([deg for deg=0:2N3 for k=0:div(deg, 3) for j=0:div(deg-3k, 2)])
+    cheb_points = [vcat(sample_points_chebyshev(2N3+k, -1, 1)...) for k=0:2]
+    samples = [[cheb_points[1][i+1], cheb_points[2][j+1], cheb_points[3][k+1]] for i=0:2N3 for j=0:2N3+1 for k=0:2N3+2]
+    samples = sort(samples[shuffle(1:length(samples))[1:tmp]])
+    samples = [[QQ(floor(BigInt, 10^4*x))//10^4 for x in sample] for sample in samples]
 
-    if verbose
-        println("Computing the approximate Fekete points and a corresponding basis...")
-    end
-    sym_basis, samples = approximatefekete(sym_basis_smart_eval,samples)
+    # from now on we work with sampled polynomials
+    R = SampledMPolyRing(FF, samples)
+    u = R(u)
+    v = R(v)
+    t = R(t)
 
-    if verbose
-        println("Creating the SOS part of the trivariate constraint...")
-    end
-    for wi=1:length(weights)
-        for swi=1:length(symmetry_weights)
-            rank = length(symmetry_weights[swi])
-            #this has in general too many entries, so we remove the ones with too high degree
-            #kron(a,b) does [a[1]*b, a[2]*b,..., a[end] * b]. So the degree of vecs[r][i] is total_degree(symmetry_weights[swi][r][div(i,length(b))]+degree[(i-1)%length(b)+1]
-            vecs = [kron(symmetry_weights[swi][r], sym_basis[1:last_degree[1+2d-total_degree(weights[wi])]]) for r=1:rank]
-            for r=1:rank
-                len = last_degree[1+2d-total_degree(weights[wi])] # the length of the symmetric basis we tensored the symmetric weight with
-                #We keep the entries if the resulting diagonal element has degree at most 2d-deg(weight), since the weight will be set as the 'eigenvalue'. Note that this allows us to use sample points outside the domain
-                keep_idx = [i for i=1:length(vecs[r])
-                    if 2*(total_degree(symmetry_weights[swi][r][div(i-1,len)+1]) + degrees[(i-1)%len+1]) <= 2d-total_degree(weights[wi])]
-                vecs[r] = vecs[r][keep_idx]
-            end
-            F[Block((:trivariatesos, wi,swi))] = LowRankMatPol([weights[wi] for r=1:rank], vecs)
-        end
-    end
-    trivariatecon = Constraint(0, F, Dict(), samples)
-
-    if verbose
-        println("Creating the univariate constraint")
-    end
-    W, (w,) = polynomial_ring(FF, ["w"])
-    f = Dict()
-    for k=0:d # F(u,u,1)
-        # from the (normally) three vu^T items, we only need 2 if we sum the ones with common u^T
-        f[Block((:F,k))] = LowRankMatPol([1,1],
-                            [m(w,d-k), m(W(1),d-k)],
-                            [Q(n-1,k,w,w,1) .* m(w,d-k)+Q(n-1,k,w,1,w) .* m(W(1),d-k),Q(n-1,k,1,w,w) .* m(w,d-k)])
-    end
-    basis = basis_gegenbauer(2d, n, w)
-    for k=0:2d # a_k
-        f[Block((:a,k))] = LowRankMatPol([basis[k+1]], [[1]])
-    end
-    uni_basis = basis_chebyshev(2d, x)
-    samples1d = sample_points_chebyshev(2d, -1, costheta) #we can take more samples, now we just get a better basis based on these samples. But since chebyshev points are relatively good, this is not a problem
-    uni_basis,samples1d = approximatefekete(uni_basis, samples1d)
-
-    f[Block((:uni_SOS,1))] = LowRankMatPol([1], [uni_basis[1:d+1]])
-    f[Block((:uni_SOS,2))] = LowRankMatPol([p(w,costheta)], [uni_basis[1:d]])
-
-    univariatecon = Constraint(-1, f, Dict(), samples1d)
-
-    obj = Dict()
-    obj[Block((:F, 0))] = ones(d+1, d+1)
-    for k=0:2d
-        obj[Block((:a,k))] = ones(1, 1)
-    end
-    objective = Objective(1, obj, Dict())
-
-    sos = LowRankPolProblem(false, objective, [univariatecon, trivariatecon])
-    if verbose
-        println("Converting to a clustered low-rank SDP...")
-    end
-    if all_free
-        sdp = ClusteredLowRankSDP(sos,as_free=[(:F,k) for k=0:d])
-    else
-        sdp = ClusteredLowRankSDP(sos)
-    end
-    status, sol, time, errorcode = solvesdp(sdp;kwargs...)
-end
-export three_point_spherical_cap_highrank
-function three_point_spherical_cap_highrank(n, d, costheta, prec=256, all_free=false; basis=1, grid_option=2, N=2d, verbose=false, kwargs...)
-    #basis: 1 = monomial
-    #       2 = chebyshev
-    #       3 = gegenbauer
-    # These are orthogonalized with respect to the sample points, so it shouldn't really matter
-    setprecision(BigFloat,prec)
-    FF = RealField
-
-    R, (u,v,t) = polynomial_ring(FF, ["u","v","t"])
-    if verbose
-        println("Creating the polynomials for F_k...")
-    end
     F = Dict()
-    for k=0:d
-        @assert Q(n-1,k,u,v,t) == Q(n-1,k,v,u,t)
-        #Instead of having both e.g. m(v,d-k) * m(u,d-k)^T and m(t,d-k) * m(u,d-k)^T, we combine them
-        mat = Q(n-1,k,u,v,t) .* (m(v,d-k) * transpose(m(u,d-k)) +m(u,d-k) * transpose(m(v,d-k)) )
-        mat += Q(n-1,k,t,u,v) .* (m(t,d-k) * transpose(m(u,d-k)) + m(u,d-k) * transpose(m(t,d-k)))
-        mat += Q(n-1,k,t,v,u) .* (m(t,d-k) * transpose(m(v,d-k)) + m(v,d-k) * transpose(m(t,d-k)))
+    for k=0:d3
+        Tmat = Smat(FF, n, k, d3, u, v, t)
+        F[(:F, k)] = Tmat
+    end
 
-        F[Block((:F,k))] = 1//6 * mat
-    end
-    #The vectors which construct the Pi_pi matrices. We have to tensor them with a symmetric basis for the E_pi matrices
-    symmetry_weights = [[[R(1)]],
-                        [[(u-v)*(v-t)*(t-u)]],
-                        [[1/sqrt(FF(2))*(2u-v-t),1/sqrt(FF(2))*(2v*t-u*t-u*v)],
-                            [sqrt(FF(3)/FF(2))*(v-t),sqrt(FF(3)/FF(2))*(u*t-u*v)]]]
-    #The polynomial weights which describe the domain
-    weights = [R(1),
-        p(u,costheta)+p(v,costheta)+p(t,costheta),
-        p(u,costheta)*p(v,costheta)+p(v,costheta)*p(t,costheta)+p(t,costheta)*p(u,costheta),
-        p(u,costheta)*p(v,costheta)*p(t,costheta),
-        2u*v*t + 1 - u^2 - v^2 - t^2]
-    #The basis in 1 variable used for the symmetric basis
-    R1, (x,) = polynomial_ring(FF,["x"])
-    if basis == 1
-        basis1d_sym = m(x, 2d)
-    elseif basis == 2
-        basis1d_sym = basis_chebyshev(2d, x)
-    elseif basis == 3
-        basis1d_sym = basis_gegenbauer(2d, n, x)
-    elseif basis == 4
-        basis1d_sym = basis_laguerre(2d, BigFloat(n)/2-1,x)
-        max_coef = [max(coefficients(basis1d_sym[i])...) for i = 1:length(basis1d_sym)]
-        basis1d_sym = [max_coef[i]^(-1) * basis1d_sym[i] for i = 1:length(basis1d_sym)]
-    else
-        # also monomial basis for wrong input
-        println("The option 'basis = $basis' was not recognized, we use the monomial basis as initial basis.")
-        basis1d_sym = m(x, 2d)
-    end
-    if verbose
-        println("Creating the polynomials for the SOS basis and the potential samples...")
-    end
-    # with the smart_eval basis, we don't compute the polynomials explicitely, but just the evaluations.
-    sym_basis_smart_eval = [(u,v,t) -> basis1d_sym[deg-3k-2j+1](u+v+t) * basis1d_sym[j+1](u*v+v*t+u*t) * basis1d_sym[k+1](u*v*t) for deg=0:2d for k=0:div(deg,3) for j=0:div(deg-3k,2)]
+    _, x = polynomial_ring(FF, :x)
+    tempbasis = m(x, N3)
 
-    # we don't have a lot of double samples point due to symmetry, because we don't use exactly the same point sets for the x,y and z
-    #We create a grid of sample points. either equally spaced or chebyshev-like
-    if grid_option == 1
-        samples = [-1 .+ (1+costheta) .* [i/N,j/N,k/N] for i=0:N for j=i:N for k=j:N] #this is kinda useless
-    elseif grid_option == 2
-        cheb_points = [vcat(sample_points_chebyshev(N+k,-1,costheta)...) for k=0:2]
-        samples = [[cheb_points[1][i+1], cheb_points[2][j+1], cheb_points[3][k+1]] for i=0:N for j=0:N+1 for k=0:N+2]
+    basis3d = []
+    for deg = 0:N3, k = 0:div(deg, 3), j = 0:div(deg-3k, 2)
+        evaluations = [tempbasis[deg-3k-2j+1](u+v+t) * tempbasis[j+1](u*v+v*t+u*t) * tempbasis[k+1](u*v*t) for (u, v, t) in samples]
+        push!(basis3d, SampledMPolyRingElem(R, evaluations))
+        # other possibility:
+        # push!(basis3d, tempbasis[deg-3k-2j+1](u+v+t) * tempbasis[j+1](u*v+v*t+u*t) * tempbasis[k+1](u*v*t))
     end
-    samples = [
-        s for s in samples if (1 + 2 * u * v * t - u^2 - v^2 - t^2)(s...) >= 0
-    ] # We only keep the samples in the domain. This is not really needed
-    #The degrees of the polynomials. They are ordered on degree, so we can look for the last one to determine the length of the bases we need later.
-    degrees = [deg for deg=0:2d for k=0:div(deg,3) for j=0:div(deg-3k,2)]
-    last_degree = [findlast(x -> x == k, degrees) for k=0:2d]
+    # degrees of the sampled polynomials
+    degrees3d = [deg for deg=0:N3 for k=0:div(deg, 3) for j=0:div(deg-3k, 2)]
 
-    if verbose
-        println("Computing the approximate Fekete points and a corresponding basis...")
-    end
-    sym_basis, samples = approximatefekete(sym_basis_smart_eval,samples)
-
-    if verbose
-        println("Creating the SOS part of the trivariate constraint...")
-    end
-    for wi=1:length(weights)
-        for swi=1:length(symmetry_weights)
-            rank = length(symmetry_weights[swi])
-            #this has in general too many entries, so we remove the ones with too high degree
-            #kron(a,b) does [a[1]*b, a[2]*b,..., a[end] * b]. So the degree of vecs[r][i] is total_degree(symmetry_weights[swi][r][div(i,length(b))]+degree[(i-1)%length(b)+1]
-            vecs = [kron(symmetry_weights[swi][r], sym_basis[1:last_degree[1+2d-total_degree(weights[wi])]]) for r=1:rank]
-            for r=1:rank
-                len = last_degree[1+2d-total_degree(weights[wi])] # the length of the symmetric basis we tensored the symmetric weight with
-                #We keep the entries if the resulting diagonal element has degree at most 2d-deg(weight), since the weight will be set as the 'eigenvalue'. Note that this allows us to use sample points outside the domain
-                keep_idx = [i for i=1:length(vecs[r])
-                    if 2*(total_degree(symmetry_weights[swi][r][div(i-1,len)+1]) + degrees[(i-1)%len+1]) <= 2d-total_degree(weights[wi])]
-                vecs[r] = vecs[r][keep_idx]
+    # create the invariant sums-of-squares
+    for wi in eachindex(weights)
+        if total_degree(weights[wi]) <= 2N3
+            for eqi in eachindex(equivariants)
+                vecs = []
+                for r in eachindex(equivariants[eqi])
+                    vec = []
+                    for eq in equivariants[eqi][r], (q, qdeg) in zip(basis3d, degrees3d)
+                        if total_degree(weights[wi]) + 2total_degree(eq) + 2qdeg <= 2N3
+                            push!(vec, eq * q)
+                        end
+                    end
+                    if length(vec) > 0
+                        push!(vecs, vec)
+                    end
+                end
+                if length(vecs) > 0
+                    F[(:trivariatesos, wi, eqi)] = LowRankMatPol(weights[wi] .* factors[eqi], vecs)
+                end
             end
-            F[Block((:trivariatesos, wi,swi))] = LowRankMatPol([weights[wi] for r=1:rank], vecs)
         end
     end
-    trivariatecon = Constraint(0, F, Dict(), samples)
-
-    if verbose
-        println("Creating the univariate constraint")
+    push!(constraints, Constraint(0, F, Dict(), samples))
+    
+    # create the objective
+    objdict = Dict()
+    objdict[(:F, 0)] = ones(Int, d3+1, d3+1)
+    for k=0:2d2
+        objdict[(:a, k)] = ones(Int, 1, 1)
     end
-    W, (w,) = polynomial_ring(FF, ["w"])
-    f = Dict()
-    for k=0:d # F(u,u,1)
-        mat = Q(n-1,k,w,1,w) .* ( m(w,d-k) * transpose(m(1,d-k)) + m(1,d-k) * transpose(m(w,d-k)))
-        mat += Q(n-1,k,w,w,1) .* ( m(w,d-k) * transpose(m(w,d-k)))
+    obj = Objective(1, objdict, Dict())
+    problem = Problem(Minimize(obj), constraints)
 
-        # from the (normally) three vu^T items, we only need 2 if we sum the ones with common u^T
-        f[Block((:F,k))] =  mat #this is 3 times the symmetrized  function
-        # LowRankMatPol([1,1],
-        #                     [m(w,d-k), m(W(1),d-k)],
-        #                     [Q(n-1,k,w,w,1) .* m(w,d-k)+Q(n-1,k,w,1,w) .* m(W(1),d-k),Q(n-1,k,1,w,w) .* m(w,d-k)])
-    end
-    basis = basis_gegenbauer(2d, n, w)
-    for k=0:2d # a_k
-        f[Block((:a,k))] = hcat([basis[k+1]])#LowRankMatPol([basis[k+1]], [[1]])
-    end
-    uni_basis = basis_chebyshev(2d, x)
-    samples1d = sample_points_chebyshev(2d, -1, costheta) #we can take more samples, now we just get a better basis based on these samples. But since chebyshev points are relatively good, this is not a problem
-    uni_basis,samples1d = approximatefekete(uni_basis, samples1d)
-
-    f[Block((:uni_SOS,1))] = LowRankMatPol([1], [uni_basis[1:d+1]])
-    f[Block((:uni_SOS,2))] = LowRankMatPol([p(w,costheta)], [uni_basis[1:d]])
-
-    univariatecon = Constraint(-1, f, Dict(), samples1d)
-
-    obj = Dict()
-    obj[Block((:F, 0))] = ones(d+1, d+1)
-    for k=0:2d
-        obj[Block((:a,k))] = ones(1, 1)
-    end
-    objective = Objective(1, obj, Dict())
-
-    sos = LowRankPolProblem(false, objective, [univariatecon, trivariatecon])
-    if verbose
-        println("Converting to a clustered low-rank SDP...")
-    end
-    if all_free
-        sdp = ClusteredLowRankSDP(sos,as_free=[(:F,k) for k=0:d])
-    else
-        sdp = ClusteredLowRankSDP(sos)
-    end
-    status, sol, time, errorcode = solvesdp(sdp;kwargs...)
+    # solve the problem
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem; kwargs...)
+    return problem, primalsol, dualsol
 end
 
 end # of module

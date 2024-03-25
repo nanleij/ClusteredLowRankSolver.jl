@@ -1,4 +1,4 @@
-# Example: the Delsarte bound
+# [Example: the Delsarte bound](@id exdelsarte)
 
 In this example we show how the Delsarte linear programming bound [delsarte-spherical-1977](@cite) for the spherical code problem can be modeled and solved using `ClusteredLowRankSolver`. See the [Examples](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples) folder for the file with the code. Let ``P_k^n`` be the Gegenbauer polynomial of degree ``k`` with parameter ``n/2-1``, normalized such that ``P_k^n(1) = 1``. The Delsarte bound for dimension ``n``, degree ``2d``, and angle ``\theta`` can be written as
 ```math
@@ -40,14 +40,14 @@ g(x) = (x+1)(\cos(\theta)-x).
 ```
 
 Now that we formulated the semidefinite program, we can model it in Julia.
-We use the `PolynomialRing` structure of `AbstractAlgebra` to define the polynomials. For the bases and samples, we use the auxilliary package `BasesAndSamples`. And of course, we also need `ClusteredLowRankSolver`.
+We use the `polynomial_ring` of `AbstractAlgebra` to define the polynomials.
 We will start with the objective and constraints after which we define the complete program.
 
 The objective is simple, since we only optimize the value of the free variable ``M``. This gives the start of our script:
-```julia
-using ClusteredLowRankSolver, BasesAndSamples, AbstractAlgebra
+```@example 1; continued = true
+using ClusteredLowRankSolver, AbstractAlgebra
 
-function delsarte(n=3, d=10, costheta=1//2)
+function delsarte(n, d, costheta)
 
     # Initialize the objective with additive constant 0,
     # no dependence on matrix variables,
@@ -55,22 +55,20 @@ function delsarte(n=3, d=10, costheta=1//2)
     obj = Objective(0, Dict(), Dict(:M => 1))
 
 ```
-For the first constraint, we need the Gegenbauer polynomials, which are  defined in the package `BasesAndSamples`. In this constraint we only use the positive semidefinite matrix variables, for which we collect the constraint matrices in a `Dict`:
-```julia
-    R, (x,) = PolynomialRing(RealField, ["x"])
+For the first constraint, we need the Gegenbauer polynomials, which are part of `ClusteredLowRankSolver`. In this constraint we only use the positive semidefinite matrix variables, for which we collect the constraint matrices in a `Dict`:
+```@example 1; continued = true
+    R, x = polynomial_ring(RealField, :x)
     # A vector consisting of the Gegenbauer polynomials
     # of degree at most 2d
     gp = basis_gegenbauer(2d, n, x)
     psd_dict1 = Dict()
     for k = 1:2d
-        # The eigenvalues are the gegenbauer polynomials,
-        # and the vectors have the polynomial 1 as entry:
-        psd_dict1[Block((:a, k))] = hcat([gp[k+1]])
+        psd_dict1[(:a, k)] = [gp[k+1];;]
     end
 ```
-Since Julia 1.7, it is possible to construct matrices with ``[gp[k+1];;]`` instead of ``hcat``. Note that here we use a general (high-rank) constraint matrix for the variables ``a_k``.
-For the sums-of-squares part, we define a basis and the set of samples points. We use `approximatefekete` to obtain a basis which is orthogonal on the sample points.
-```julia
+Note that here we use a general (high-rank) constraint matrix for the variables ``a_k``.
+For the sums-of-squares part, we define a basis and the set of samples points. We use `approximatefekete` to obtain a basis which is orthogonal with respect to the sample points.
+```@example 1; continued = true
     # 2d+1 Chebyshev points in the interval [-1, cos(θ)]
     samples = sample_points_chebyshev(2d, -1, costheta)
     # A basis for the Chebyshev polynomials of degree at most 2d
@@ -78,39 +76,48 @@ For the sums-of-squares part, we define a basis and the set of samples points. W
     # Optimize the basis with respect to the samples
     sosbasis, samples = approximatefekete(basis, samples)
 ```
-The samples need to be a vector of numbers, because we also can consider multivariate polynomials.
 Since the second sum-of-squares has a weight of degree 2, we use a basis up to degree ``d-1`` in that case.
-```julia
-    psd_dict1[Block((:SOS, 1))] =
-        LowRankMatPol([1], [sosbasis[1:d+1]])
-    psd_dict1[Block((:SOS, 2))] =
-        LowRankMatPol([(1+x)*(costheta-x)], [sosbasis[1:d]])
+```@example 1; continued = true
+    psd_dict1[(:SOS, 1)] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    psd_dict1[(:SOS, 2)] = LowRankMatPol([(1+x)*(costheta-x)], [sosbasis[1:d]])
     constr1 = Constraint(-1, psd_dict1, Dict(), samples)
 ```
 In the last line, we define the constraint (with constant polynomial ``-1``). The extra dictionary corresponds to the coefficients for the free variables, which we do not use in this constraint.
 
-The second constraint seems simpler since it does not involve polynomials. However, since we first define a `LowRankPolProblem`, we need to write it as a constraint with polynomials of degree 0. We also introduce a slack variable, this gives the constraint ``\sum_k a_k + s - M = -1``, where ``s \geq 0``.
-```julia
+The second constraint looks simpler since it does not involve polynomials. We also introduce a slack variable, this gives the constraint ``\sum_k a_k + s - M = -1``, where ``s \geq 0``.
+```@example 1; continued = true
     # The free variable M has coefficient -1:
     free_dict2 = Dict(:M => -1)
     # The variables a_k and the slack variable have coefficient 1:
     psd_dict2 = Dict()
     for k = 1:2d
-        psd_dict2[Block((:a, k))] = hcat([1])
+        psd_dict2[(:a, k)] = [1;;]
     end
-    psd_dict2[Block(:slack)] = LowRankMatPol([1], [[1]])
-    # We have one sample, which is arbitrary
-    constr2 = Constraint(-1, psd_dict2, free_dict2, [[0]])
+    psd_dict2[:slack] = [1;;]
+    constr2 = Constraint(-1, psd_dict2, free_dict2)
 ```
 Note that we again use a general matrix for the variables ``a_k``. The use of low-rank matrices and general matrices should be consistent per variable.
-Now we can define the `LowRankPolProblem` and convert it to a `ClusteredLowRankSDP`. When converting, we can choose to model some of the PSD variables as free variables, which can be beneficial if the corresponding constraint matrices are of relatively high rank or if they couple a lot of polynomial constraints. In this case, we just illustrate the option by modelling ``a_0`` as free variable. This adds the constraint ``X = a_0`` with a positive semidefinite variable ``X`` (in this case a ``1 \times 1`` matrix), and replaces ``a_0`` by a free variable in every constraint.
-```julia
-    # The first argument is false because we minimize:
-    sos = LowRankPolProblem(false, obj, [constr1, constr2])
-    sdp = ClusteredLowRankSDP(sos; as_free = [(:a, 0)])
+Now we can define the `Problem`.
+```@example 1; continued = true
+    problem = Problem(Minimize(obj), [constr1, constr2])
 ```
-Now we can solve the semidefinite program with
-```julia
-    status, result, time, errorcode = solvesdp(sdp)
+and solve the corresponding semidefinite program with
+```@example 1; continued=true
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
+```
+after which we return the objective value.
+```@example 1
+    return objvalue(problem, dualsol)
 end
+nothing # hide
+```
+Alternatively, we can first create the semidefinite program with
+```julia
+    sdp = ClusteredLowRankSDP(problem)
+```
+after which we can call `solvesdp` on `sdp`.
+
+Running this for one of the known sharp cases gives
+```@example 1
+delsarte(8, 3, 1//2)
 ```
