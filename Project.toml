@@ -23,6 +23,8 @@ GenericLinearAlgebra = "0.2, 0.3"
 IterTools = "1"
 KrylovKit = "0.5, 0.6, 0.7"
 Nemo = "0.43"
+RowEchelon = "0.2"
+Combinatorics = "1.0"
 julia = "1"
 
 [extras]
