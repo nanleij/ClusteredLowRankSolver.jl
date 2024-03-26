@@ -1,71 +1,132 @@
 # ClusteredLowRankSolver
 
-[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://nanleij.github.io/ClusteredLowRankSolver.jl/stable)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nanleij.github.io/ClusteredLowRankSolver.jl/dev)
 [![Coverage](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl)
 
-## Clustered Low-Rank Semidefinite Programs
-A clustered low-rank semidefinite program is a semidefinite program in equality form including free scalar variables, where the constraint matrices corresponding to positive semidefinite variables have a low-rank structure. The program is clustered in the sense that two constraints in different clusters do not use the same positive semidefinite matrix variables.
-An example where such a clustered low-rank SDP appears is by sampling (low-rank) sums-of-squares constraints. In the interface we focus on this application.
+# ClusteredLowRankSolver.jl
 
+[`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) implements 
+  - a primal-dual interior point method for solving semidefinite programming problems;
+  - a minimal interface to model semidefinite programming problems including optional polynomial constraints; 
+  - functionality for working with sampled polynomials; and
+  - an implementation of a rounding heuristic which can round the numerical output of the solver to an exact optimal solution over rational or algebraic numbers. 
+The solver can exploit the low-rank structure of constraint matrices (which arise naturally from enforcing polynomial identities by evaluating both sides at a unisolvent set) but can also work with dense constraint matrices. The solver uses high-precision numerics (using Arblib) and the interface integrates with the Nemo computer algebra system.
 
 ## Installation
-After installing Julia, run Julia and install the package with e.g.
-```
-]add ClusteredLowRankSolver
-```
-Press `backspace` to go back to the REPL from the package environment.
 
-## Usage
-Use the package with `using ClusteredLowRankSolver`. See the [documentation](https://nanleij.github.io/ClusteredLowRankSolver.jl/stable) for instructions on using the interface. Below we show how to model a small polynomial optimization problem.
-
-To use `n` threads, start Julia with the option `-t n`.
-On Windows using multiple threads may lead to crashes or wrong answers when using free variables.
+The solver is written in Julia, and has been registered as a Julia package. Typing `using ClusteredLowRankSolver` in the REPL will prompt installation if the package has not been installed yet.
 
 ## Examples
-Consider the problem of finding the minimum of a univariate polynomial p(x) over [-1,1], i.e., the maximal y such that p(x)-y >=0. Relaxing the constraint gives p(x)-y = s_1(x) + (1-x^2) * s_2(x) , and separating the variables from the fixed polynomial gives s_1(x) + (1-x^2) * s_2(x) + y = p, where s_i are sum-of-squares polynomials.
+
+Here we give two small examples to showcase the interface. More examples are available in the [documentation](https://nanleij.github.io/ClusteredLowRankSolver.jl/dev). For the code examples described in the documentation and more, see the [examples](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples) folder.
+
+### Example 1: The Goemans-Williamson MAX-CUT relaxation
+Given a Laplacian `L` of a graph with `n` vertices, the semidefinite programming relaxation of the max-cut problem reads
+```math
+\begin{aligned}
+& \text{maximize} & & \left\langle \frac{1}{4}L, X \right\rangle\\
+& \text{subject to} & & \langle E_{ii}, X \rangle = 1, \; i=1,\ldots,n,\\
+&&&X \in S_+^{n}.
+\end{aligned}
+```
+where ``E_{ii}`` is the matrix with a one in the ``(i,i)`` entry, and zeros elsewhere. Here ``\langle \cdot, \cdot \rangle`` denotes the trace inner product.
+
+The following code implements this using `ClusteredLowRankSolver`.
 
 ```julia
-using ClusteredLowRankSolver, AbstractAlgebra
-using BasesAndSamples # To generate the samples
+using  ClusteredLowRankSolver
+function goemans_williamson(L::Matrix)
+    n = size(L, 1)
 
-# Set up the polynomial space and define the polynomial to be optimized:
-R, (x,) = polynomial_ring(QQ, 1)
-p = 1-x-x^3+x^6
-# The degree of the basis for the sums-of-squares polynomials we want to use:
-d = 3
+    # Construct the objective
+    obj = Objective(0, Dict(:A => 1//4 * L), Dict())
 
-# For the constraint we consider the part for the free variables and the part for the
-# positive semidefinite matrix variables separately
-free_dict = Dict(:y => 1)  
+    # Construct the constraints
+    constraints = []
+    for i = 1:n
+        M = zeros(Rational{BigInt}, n, n)
+        M[i, i] = 1//1
+        # the first argument is the right hand side
+        push!(constraints, Constraint(1, Dict(:A => M), Dict()))
+    end
 
-# The matrix variables come from the sum-of-squares parts, since s_i(x) is a sum-of-squares
-# if and only if s_i(x) = ⟨b(x)b(x)^T, Y⟩ for some Y ⪰ 0 and vector of basis polynomials b(x)
-matrix_dict = Dict()
-# Both SOS parts have the same total degree, but different weights
-matrix_dict[Block(:SOS1)] = LowRankMatPol([R(1)], [[x^k for k=0:d]])
-matrix_dict[Block(:SOS2)] = LowRankMatPol([1-x^2], [[x^k for k=0:d-1]])
+    # Construct the problem
+    problem = Problem(Maximize(obj), constraints)
 
-# Chebyshev points in [-1,1]:
-samples = sample_points_chebyshev(2d)
-# Create the constraint:
-con = Constraint(p, matrix_dict, free_dict, samples)
+    # Solve the problem
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
 
-# we want to maximize y
-obj = Objective(0, Dict(), Dict(:y => 1))
-
-# Maximize the objective with constraint `con`
-sos = LowRankPolProblem(true, obj, [con])
-# Convert the SOS problem to a clustered low-rank SDP
-sdp = ClusteredLowRankSDP(sos)
-# Solve the sdp with the standard parameters
-status, result = solvesdp(sdp)
+    return objvalue(problem, dualsol), matrixvar(dualsol, :A)
+end
 ```
 
-More examples are available in the [documentation](https://nanleij.github.io/ClusteredLowRankSolver.jl/stable). For the code examples described in the documentation and more, see the [examples](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples) folder.
+The line 
+```julia
+    obj = Objective(0, Dict(:A => L), Dict())
+```
+says the objective is the trace-inner product between the positive semidefinite matrix variable labeled `:A` and the matrix `L`. The `0` in the first argument indicates we do not have a constant offset and the empy `Dict()` in the third argument indicates the objective does not involve any free variables.
+
+The line
+```julia
+    push!(constraints, Constraint(1, Dict(:A => M), Dict()))
+```
+adds the constraint that the ``i``-th entry on the diagonal is equal to one. The first argument `1` of the constructor Constraint is the right-hand-side of the constraint, the second argument is a sum of trace-inner products positive semidefinite matrix variables with the matrix `M`.
+
+After that, the problem is constructed with
+```julia
+    problem = Problem(Maximize(obj), constraints)
+```
+and converted to a semidefinite program and solved using `solvesdp`.
+
+### Example 2: Finding the global minimum of a univariate polynomial
+To find the minimum of a polynomial ``f`` of degree ``2d``, one can use the following problem
+```math
+\begin{aligned}
+& \text{minimize} & & \lambda\\
+& \text{subject to} & & f - \lambda = s,\\
+\end{aligned}
+```
+where ``s`` is a sum-of-squares polynomial of degree ``2d``.
+Let ``m`` be a vector whose entries form a basis of the polynomials up to degree ``d``, then we can write ``s = \langle m(x)m(x)^T, X \rangle`` where ``X`` is a positive semidefinite matrix.
+
+```julia
+using ClusteredLowRankSolver, Nemo
+function polyopt(f, d)
+    #set up the polynomial field 
+    P = parent(f)
+    u = gen(P)
+
+    #compute the sos basis and the samples
+    sosbasis = basis_chebyshev(d, u)
+    samples = sample_points_chebyshev(2d,-1,1) 
 
 
-## Citing ClusteredLowRankSolver
-If you use `ClusteredLowRankSolver.jl` in a publication please consider citing
+    #construct the constraint SOS + lambda = f
+    c = Dict()
+    c[:X] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    constraint = Constraint(f, c, Dict(:lambda => 1), samples)
 
- - D. de Laat and N. Leijenhorst, *Solving clustered low-rank semidefinite programs arising from polynomial optimization*, Preprint (2022), [arXiv:2202.12077](https://arxiv.org/abs/2202.12077)
+    #Construct the objective
+    objective = Objective(0, Dict(), Dict(:lambda => 1))
+
+    #Construct the SOS problem: minimize the objective s.t. the constraint
+    problem = Problem(true, objective, [constraint])
+
+    #Solve the SDP and return results
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)    
+    return objvalue(problem, dualsol)
+end
+```
+TODO: add example of using the function
+
+
+## Citing ClusteredLowRankSolver and the rounding procedure
+The semidefinite programming solver and the interface (including sampled polynomials) in `ClusteredLowRankSolver.jl` have been developed as part of the paper
+ - Nando Leijenhorst and David de Laat, [*Solving clustered low-rank semidefinite programs arising from polynomial optimization*](https://arxiv.org/abs/2202.12077), preprint, 2022. arXiv:2202.12077
+The solver was inspired by the more specialized solver
+- David Simmons-Duffin. [*A semidefinite program solver for the conformal bootstrap*](https://link.springer.com/article/10.1007/JHEP06(2015)174). J. High Energy Phys. 174 (2015), [arXiv:1502.02033](https://arxiv.org/abs/1502.02033)
+
+The rounding procedure in `ClusteredLowRankSolver.jl` has been developed as part of the paper
+ - Henry Cohn, David de Laat, and Nando Leijenhorst, [*Optimality of spherical codes via exact semidefinite programming bounds*](), preprint, 2024. arXiv:???
+This improves the rounding procedure developed in
+- Maria Dostert, David de Laat, and Philippe Moustrou, [*Exact semidefinite programming bounds for packing problems*](https://epubs.siam.org/doi/10.1137/20M1351692), SIAM J. Optim. 31(2) (2021), 1433-1458, [arXiv:2001.00256](https://arxiv.org/abs/2001.00256)

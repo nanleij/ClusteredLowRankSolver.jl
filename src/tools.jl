@@ -22,10 +22,10 @@ function LinearAlgebra.dot(A::BlockDiagonal, B::BlockDiagonal)
 end
 
 #Extending the LinearAlgebra.dot for ArbMatrices. Arblib does not have an inner product for matrices
-function LinearAlgebra.dot(A::T, B::T) where T <: Union{ArbMatrix,ArbRefMatrix}
+function LinearAlgebra.dot(A::T, B::T) where T <: Union{AL.ArbMatrix,ArbRefMatrix}
     #This is also faster for ArbMatrices due to the addmul instead of += A[i,j]*B[i,j], which allocates
     @assert size(A) == size(B)
-    res = Arb(0, prec = precision(A))
+    res = AL.Arb(0, prec = precision(A))
     for i = 1:size(A, 1)
         for j = 1:size(A, 2) #Arb is row major?
             Arblib.addmul!(res, A[i,j], B[i,j])
@@ -34,7 +34,7 @@ function LinearAlgebra.dot(A::T, B::T) where T <: Union{ArbMatrix,ArbRefMatrix}
     return res
 end
 
-function LinearAlgebra.transpose(A::T;prec=precision(A)) where T<:Union{ArbRefMatrix,ArbMatrix}
+function LinearAlgebra.transpose(A::T;prec=precision(A)) where T<:Union{ArbRefMatrix,AL.ArbMatrix}
     B = T(size(A,2),size(A,1),prec=prec)
     Arblib.transpose!(B,A)
     return B
@@ -106,7 +106,7 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
     return 1
 end
 
-function get_allocations_arb(v::T) where T<:Union{ArbMatrix, ArbRefMatrix}
+function get_allocations_arb(v::T) where T<:Union{AL.ArbMatrix, ArbRefMatrix}
     Arblib.allocated_bytes(v)
 end
 function get_allocations_arb(v)
@@ -125,7 +125,7 @@ function get_allocations_arb(v::Dict)
 end
 
 
-function unique_idx(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
+function unique_idx(x::Vector{T}) where T<:Union{AL.ArbMatrix,ArbRefMatrix}
     unique_idx = Int[]
     for i=1:length(x)
         #We compare this one with the elements we did already
@@ -143,7 +143,7 @@ function unique_idx(x::Vector{T}) where T<:Union{ArbMatrix,ArbRefMatrix}
     end
     return unique_idx
 end
-function unique_cols(x::T, dim = 2) where T<:Union{ArbMatrix,ArbRefMatrix}
+function unique_cols(x::T, dim = 2) where T<:Union{AL.ArbMatrix,ArbRefMatrix}
     unique_idx = Int[]
     for i in axes(x,dim)
         #We compare this one with the elements we did already
@@ -162,7 +162,7 @@ function unique_cols(x::T, dim = 2) where T<:Union{ArbMatrix,ArbRefMatrix}
     return unique_idx
 end
 
-function approx_mul_transpose!(C::T, AT::T, B::T; prec=precision(C)) where T<:Union{ArbMatrix,ArbRefMatrix}
+function approx_mul_transpose!(C::T, AT::T, B::T; prec=precision(C)) where T<:Union{AL.ArbMatrix,ArbRefMatrix}
     # C = AT^T * B = (B^T * AT)^T
     #assume that AT is much larger than B (e.g., matrix * vector)
     BT = transpose(B)
@@ -172,7 +172,7 @@ function approx_mul_transpose!(C::T, AT::T, B::T; prec=precision(C)) where T<:Un
     Arblib.transpose!(C, res)
 end
 
-function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precision(C), opt::Int=0) where T<:Union{ArbMatrix, ArbRefMatrix}
+function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precision(C), opt::Int=0) where T<:Union{AL.ArbMatrix, ArbRefMatrix}
     # matrix multiplication C = A*B, using multithreading.
     # Note that this is not the same as Arblib.mul_threaded!(), because that uses the classical matrix multiplication with flint threads
     # We will have to tune the parameters, because Arblib does classical mat mul when some dimension of the matrix has size <= 40 (i.e. A has <= 40 rows or columns, or B has <=40 rows or columns)
@@ -208,7 +208,7 @@ function matmul_threaded!(C::T, A::T, B::T; n = Threads.nthreads(), prec=precisi
     return C
 end
 
-function thread_func_inner_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=precision(C)) where T <: Union{ArbMatrix, ArbRefMatrix}
+function thread_func_inner_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=precision(C)) where T <: Union{AL.ArbMatrix, ArbRefMatrix}
     # distribute B over several cores and apply func!(C[part],A,B[part],prec=prec)
     nc = size(B,1)
     sizes = [div(nc,n) for i=1:n] .+ [div(nc,n)*n+i <= nc ? 1 : 0 for i=1:n]
@@ -230,7 +230,7 @@ function thread_func_inner_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=prec
         Arblib.add!(C, C, part_res[i])
     end
 end
-function thread_func_left_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=precision(C)) where T <: Union{ArbMatrix, ArbRefMatrix}
+function thread_func_left_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=precision(C)) where T <: Union{AL.ArbMatrix, ArbRefMatrix}
     # distribute B over several cores and apply func!(C[part],A,B[part],prec=prec)
     nr = size(A,1)
     sizes = [div(nr,n) for i=1:n] .+ [div(nr,n)*n+i <= nr ? 1 : 0 for i=1:n]
@@ -248,7 +248,7 @@ function thread_func_left_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=preci
     end
 end
 
-function thread_func_right_window!(C::T,A::T,B::T; n =Threads.nthreads(), prec=precision(C)) where T <: Union{ArbMatrix, ArbRefMatrix}
+function thread_func_right_window!(C::T,A::T,B::T; n =Threads.nthreads(), prec=precision(C)) where T <: Union{AL.ArbMatrix, ArbRefMatrix}
     # distribute B over several cores and apply func!(C[part],A,B[part],prec=prec)
     nc = size(B,2)
     sizes = [div(nc,n) for i=1:n] .+ [div(nc,n)*n+i <= nc ? 1 : 0 for i=1:n]

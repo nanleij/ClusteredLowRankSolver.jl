@@ -1,29 +1,23 @@
 # We can as well work with X[j][l] (i.e. X::Vector{Vector{ArbMatrix}}}). This is only convenient for defining dot(X,Y)
 # We don't use any methods of BlockDiagonal, so for speed it doesn't matter
 
+"""
+    SolverFailure(msg)
 
+An error in the solver, with a message.
+"""
 struct SolverFailure <: Exception
     msg::String
 end
 
-@doc raw"""
-	solvesdp(sdp; kwargs...)
-
-Solve the clustered SDP with low-rank constraint matrices.
-
-Solve the following sdp:
-
-```math
-\begin{aligned}
-  \max & ∑_{j=1}^J ⟨ C^j, Y^j⟩  + ⟨ b, y ⟩ && \\
-  &⟨ A^{j}_*, Y^j⟩ + B^j y = c^j,	 && j=1,\ldots,J \\
-  &Y^j ⪰ 0,&& j=1,…,J,
-\end{aligned}
+"""
 ```
-where we optimize over the free variables ``y`` and the PSD block matrices
-``Y^j = diag(Y^{j,1}, ..., Y^{j,L_j})``, and ``⟨A_*^j, Y^j⟩`` denotes the vector with entries ``⟨A_p^j, Y^j⟩``.
-The matrices ``A^j_p`` have the same block structure as ``Y^j``. Every ``A^{j,l}`` can have several equal-sized blocks ``A^{j,l}_{r,s}``.
-The smallest blocks have a low rank structure.
+	solvesdp(problem::Problem; kwargs...)
+```
+```
+    solvesdp(sdp::ClusteredLowRankSDP; kwargs...)
+```
+Solve the semidefinite program generated from `problem` or `sdp`. 
 
 Keyword arguments:
   - `prec` (default: `precision(BigFloat)`): the precision used
@@ -33,37 +27,68 @@ Keyword arguments:
   - `maxiterations` (default: `500`): the maximum number of iterations
   - `duality_gap_threshold` (default: `10^-15`): how near to optimal the solution needs to be
   - `primal/dual_error_threshold` (default:`10^-30`): how feasible the primal/dual solution needs to be
-  - `max_complementary_gap` (default: `10^100`): the maximum of <X,Y>/#rows(X) allowed
+  - `max_complementary_gap` (default: `10^100`): the maximum of `dot(X,Y)/nrows(X)` allowed
   - `need_primal_feasible/need_dual_feasible` (default: `false`): terminate when the solution is primal/dual feasible
   - `verbose` (default: `true`): print information after every iteration if true
   - `step_length_threshold` (default: `10^-7`): the minimum step length allowed
-  - `initial_solutions` (default: `[]`): if x,X,y,Y are given, use that instead of omega_p/d * I for the initial solutions
+  - `primalsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
+  - `dualsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
 """
 function solvesdp(
+    problem::Problem;
+    prec=precision(BigFloat), # The precision used in the algorithm.
+    kwargs...)
+    # maxiterations=500,
+    # beta_infeasible=3//10, # try to decrease mu by this factor when infeasible
+    # beta_feasible = 1//10, # try to decrease mu by this factor when feasible
+    # gamma=9//10, # this fraction of the maximum possible step size is used
+    # omega_p=big(10)^(10), # initial size of the primal PSD variables #TODO: define one omega to be the same as the other?
+    # omega_d=big(10)^(10), # initial size of the dual PSD variables
+    # duality_gap_threshold=1e-15, # how near to optimal does the solution need to be
+    # primal_error_threshold=1e-30,  # how feasible does the primal solution need to be
+    # dual_error_threshold=1e-30, # how feasible does the dual solution need to be
+    # max_complementary_gap=big(10)^100, # the maximum of <X,Y>/#rows(X)
+    # need_primal_feasible=false, # terminate when the solution is primal feasible
+    # need_dual_feasible=false, # terminate when the solution is dual feasible
+    # verbose = true, # false: print nothing, true: print information after each iteration
+    # step_length_threshold=1e-7, # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
+    # primalsol::Union{Nothing,PrimalSolution}=nothing,
+    # dualsol::Union{Nothing,DualSolution}=nothing,
+    # correctoronly=false,
+    # #experimental & testing:
+    # matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
+	# testing=false, # print the times of the first two iterations. This is for testing purposes
+# )
+    sdp = ClusteredLowRankSDP(problem, prec=prec)
+    sdp = convert_to_prec(sdp, prec)
+    solvesdp(sdp; prec=prec, kwargs...)
+end
+function solvesdp(
     sdp::ClusteredLowRankSDP,
-    threadinginfo::ThreadingInfo = ThreadingInfo(sdp); # the order of j and (j,l) used for threading
-    prec = precision(BigFloat), # The precision used in the algorithm.
-    maxiterations = 500,
-    beta_infeasible = Arb(3,prec=prec) / 10, # try to decrease mu by this factor when infeasible
-    beta_feasible = Arb(1,prec=prec) / 10, # try to decrease mu by this factor when feasible
-    gamma = Arb(9,prec=prec) / 10, # this fraction of the maximum possible step size is used
-    omega_p = Arb(10,prec=prec)^(10), # initial size of the primal PSD variables
-    omega_d = Arb(10,prec=prec)^(10), # initial size of the dual PSD variables
-    duality_gap_threshold = Arb(10,prec=prec)^(-15), # how near to optimal does the solution need to be
-    primal_error_threshold = Arb(10,prec=prec)^(-30),  # how feasible does the primal solution need to be
-    dual_error_threshold = Arb(10,prec=prec)^(-30), # how feasible does the dual solution need to be
-    max_complementary_gap = Arb(10,prec=prec)^100, # the maximum of <X,Y>/#rows(X)
-    need_primal_feasible = false, # terminate when the solution is primal feasible
-    need_dual_feasible = false, # terminate when the solution is dual feasible
+    threadinginfo::ThreadingInfo=ThreadingInfo(sdp); # the order of j and (j,l) used for threading
+    prec=precision(BigFloat), # The precision used in the algorithm.
+    maxiterations=500,
+    beta_infeasible=3//10, # try to decrease mu by this factor when infeasible
+    beta_feasible = 1//10, # try to decrease mu by this factor when feasible
+    gamma=9//10, # this fraction of the maximum possible step size is used
+    omega_p=big(10)^(10), # initial size of the primal PSD variables #TODO: define one omega to be the same as the other?
+    omega_d=big(10)^(10), # initial size of the dual PSD variables
+    duality_gap_threshold=1e-15, # how near to optimal does the solution need to be
+    primal_error_threshold=1e-30,  # how feasible does the primal solution need to be
+    dual_error_threshold=1e-30, # how feasible does the dual solution need to be
+    max_complementary_gap=big(10)^100, # the maximum of <X,Y>/#rows(X)
+    need_primal_feasible=false, # terminate when the solution is primal feasible
+    need_dual_feasible=false, # terminate when the solution is dual feasible
     verbose = true, # false: print nothing, true: print information after each iteration
-    step_length_threshold = Arb(10,prec=prec)^(-7), # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
-    initial_solutions = [], # initial solutions of the right format, in the order x,X,y,Y. This can give errors if the sizes are incorrect or when the matrices are not PSD
+    step_length_threshold=1e-7, # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
+    primalsol::Union{Nothing,PrimalSolution}=nothing,
+    dualsol::Union{Nothing,DualSolution}=nothing,
+    correctoronly=false,
     #experimental & testing:
-    matmul_prec = prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
-	testing = false, # print the times of the first two iterations. This is for testing purposes
+    matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
+	testing=false, # print the times of the first two iterations. This is for testing purposes
 )
     # the default values mostly come from Simmons-Duffin original paper, or from the default values of SDPA-GMP (slow but stable mode)
-
 	#NOTE: Because we use Arb through Arblib.jl, the code might look a bit like C instead of Julia.
 	# There is an issue on the Arblib.jl GitHub about using the MutableArithmetic api to use e.g.
 	#	MA.@rewrite a + b + c
@@ -72,32 +97,9 @@ function solvesdp(
 	#	Arblib.add!(a,a,c)
 	# which might make it easier to read.
 
-
     # convert to Arbs & the required precision:
-    omega_p,
-    omega_d,
-    gamma,
-    beta_feasible,
-    beta_infeasible,
-    duality_gap_threshold, #we don't really need the thresholds to be arbs?
-    primal_error_threshold,
-    dual_error_threshold = (
-        Arb.(
-            [
-                omega_p,
-                omega_d,
-                gamma,
-                beta_feasible,
-                beta_infeasible,
-                duality_gap_threshold,
-                primal_error_threshold,
-                dual_error_threshold,
-            ],
-            prec = prec,
-        )
-    )
-    sdp = convert_to_prec(sdp,prec) # convert the sdp to the precision we use in the solver.
-
+    omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, primal_error_threshold, dual_error_threshold =
+        AL.Arb.([omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, primal_error_threshold, dual_error_threshold], prec=prec)
     # The algorithm:
     # initialize:
         # 1): choose initial point q = (0, Ω_p*I, 0, Ω_d*I) = (x,X,y,Y), with Ω>0
@@ -134,67 +136,69 @@ function solvesdp(
     end
 
     # step 1: initialize. We may pass a solution from a previous run
-    if length(initial_solutions) != 4 # we need the whole solution, x,X,y,Y, otherwise we initialize the default
-        x = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = prec) # all tuples (j,r,s,k), equals size of S.
-        X = BlockDiagonal([
-            BlockDiagonal([
-                ArbRefMatrix(
-                        subblocksizes[j][l]*size(sdp.A[j][l],1),
-                        subblocksizes[j][l]*size(sdp.A[j][l],1),
-                    prec = prec,
-                ) for l in eachindex(sdp.A[j])
-            ]) for j in eachindex(sdp.A)
-        ])
-        y = ArbRefMatrix(size(sdp.b,1), 1, prec = prec)
-        Y = BlockDiagonal([
-            BlockDiagonal([
-                ArbRefMatrix(
-                        subblocksizes[j][l]*size(sdp.A[j][l],1),
-                        subblocksizes[j][l]*size(sdp.A[j][l],1),
-                    prec = prec,
-                ) for l in eachindex(sdp.A[j])
-            ]) for j in eachindex(sdp.A)
-        ])
-        #set the X,Y matrices to omega_p resp. omega_d * I
-        for j in eachindex(sdp.A)
-            for l in eachindex(sdp.A[j])
-                Arblib.one!(X.blocks[j].blocks[l])
-                Arblib.mul!(X.blocks[j].blocks[l],X.blocks[j].blocks[l], omega_p)
-                Arblib.one!(Y.blocks[j].blocks[l])
-                Arblib.mul!(Y.blocks[j].blocks[l],Y.blocks[j].blocks[l], omega_d)
+    x = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = prec) # all tuples (j,r,s,k), equals size of S.
+    X = BlockDiagonal([BlockDiagonal([ArbRefMatrix(subblocksizes[j][l]*size(sdp.A[j][l],1),
+        subblocksizes[j][l]*size(sdp.A[j][l],1), prec=prec) for l in eachindex(sdp.A[j])]) for j in eachindex(sdp.A)])
+    for j in eachindex(sdp.A), l in eachindex(sdp.A[j])
+        Arblib.one!(X.blocks[j].blocks[l])
+        Arblib.mul!(X.blocks[j].blocks[l],X.blocks[j].blocks[l], omega_p)
+    end
+    y = ArbRefMatrix(size(sdp.b,1), 1, prec=prec)
+    Y = BlockDiagonal([BlockDiagonal([ArbRefMatrix(subblocksizes[j][l]*size(sdp.A[j][l],1),
+        subblocksizes[j][l]*size(sdp.A[j][l],1), prec=prec) for l in eachindex(sdp.A[j])]) for j in eachindex(sdp.A)])
+    #set the X,Y matrices to omega_p resp. omega_d * I
+    for j in eachindex(sdp.A), l in eachindex(sdp.A[j])
+        Arblib.one!(Y.blocks[j].blocks[l])
+        Arblib.mul!(Y.blocks[j].blocks[l],Y.blocks[j].blocks[l], omega_d)
+    end
+    if !isnothing(primalsol) && !isnothing(dualsol)
+        x = ArbRefMatrix(primalsol.x, prec=prec)
+        Arblib.get_mid!(x, x)
+        for j in eachindex(sdp.matrix_coeff_names)
+            for k in eachindex(sdp.matrix_coeff_names[j])
+                sizes = [size(first(values(sdp.A[j][k][1,r])), 1) for r=1:size(sdp.A[j][k],1)]
+                for r in eachindex(sizes), s=1:r
+                    hs = 1+sum(sizes[1:r-1]):sum(sizes[1:r])
+                    vs = 1+sum(sizes[1:s-1]):sum(sizes[1:s])
+                    bl = Block(sdp.matrix_coeff_names[j][k], r, s)
+                    if r == 1 && s == 1 && !(bl in sdp.matrix_coeff_blocks)
+                        bl = sdp.matrix_coeff_names[j][k]
+                    end
+                    if !isnothing(primalsol)
+                        X.blocks[j].blocks[k][hs, vs] = primalsol.matrixvars[bl]
+                    end
+                    if !isnothing(dualsol)
+                        Y.blocks[j].blocks[k][hs, vs] = dualsol.matrixvars[bl]
+                    end
+                end
             end
         end
-    else
-        #initial solutions = [x,X,y,Y].
-        x = ArbRefMatrix(initial_solutions[1],prec=prec)
-        Arblib.get_mid!(x,x)
-        y = ArbRefMatrix(initial_solutions[3],prec=prec)
-        Arblib.get_mid!(y,y)
-
-        X = BlockDiagonal([BlockDiagonal([ArbRefMatrix(initial_solutions[2].blocks[j].blocks[l], prec=prec) for l in eachindex(sdp.A[j])]) for j in eachindex(sdp.A)])
-        Y = BlockDiagonal([BlockDiagonal([ArbRefMatrix(initial_solutions[4].blocks[j].blocks[l], prec=prec) for l in eachindex(sdp.A[j])]) for j in eachindex(sdp.A)])
-
         for (j,l) in threadinginfo.jl_order
             Arblib.get_mid!(X.blocks[j].blocks[l],X.blocks[j].blocks[l])
             Arblib.get_mid!(Y.blocks[j].blocks[l],Y.blocks[j].blocks[l])
         end
-        #check sizes:
-        @assert size(x) == (sum(size.(sdp.c,1)),1)
-        @assert size(y) == (size(sdp.b,1),1)
-        @assert all([size.(X.blocks[j].blocks,1) == subblocksizes[j] .* size.(sdp.A[j],1) for j in eachindex(sdp.A)])
-        @assert all([size.(Y.blocks[j].blocks,1) == subblocksizes[j] .* size.(sdp.A[j],1) for j in eachindex(sdp.A)])
-        #we don't check for PSDness, but that's implicitely done in the algorithm
+
+        for (i,k) in enumerate(sdp.free_coeff_names)
+            y[i] = dualsol.freevars[k]
+        end
+        Arblib.get_mid!(y,y)
     end
+    #check sizes:
+    # @assert size(x) == (sum(size.(sdp.c,1)),1)
+    # @assert size(y) == (size(sdp.b,1),1)
+    # @assert all([size.(X.blocks[j].blocks,1) == subblocksizes[j] .* size.(sdp.A[j],1) for j in eachindex(sdp.A)])
+    # @assert all([size.(Y.blocks[j].blocks,1) == subblocksizes[j] .* size.(sdp.A[j],1) for j in eachindex(sdp.A)])
+    #we don't check for PSDness, but that's implicitely done in the algorithm
 
     #separate the high-rank blocks from the low-rank ones.
     # Precompute the matrices for the bilinear pairings and the matrices used for ∑_i x_i A_i and <A^j_*, Y>
-    leftvecs_pairings, rightvecs_pairings, pointers_left, pointers_right,high_ranks = precompute_matrices_bilinear_pairings(sdp,subblocksizes)
+    leftvecs_pairings, rightvecs_pairings, pointers_left, pointers_right,high_ranks = precompute_matrices_bilinear_pairings(sdp,subblocksizes,prec=prec)
     #vecs_left and vecs_right are actually just parts of leftvecs_pairings and rightvecs_pairings ? 
     # note that we can take a flag 'symmetric' if vecsleft == vecsright for all j,l,r,s; then we only have to make the matrix for half of them
     # Note that we can forget about either the leftvecs_pairings or vecs_left, and possibly use the pointers (if we forget about vecs_left)
     # in either case, we save half the memory we use here.
-    vecs_left = [[[ArbRefMatrix(0,0) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
-    vecs_right = [[[ArbRefMatrix(0,0) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
+    vecs_left = [[[ArbRefMatrix(0,0,prec=prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
+    vecs_right = [[[ArbRefMatrix(0,0,prec=prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     max_s = maximum(size(sdp.A[j][l],2) for j in eachindex(sdp.A) for l in eachindex(sdp.A[j]))
     maxsize = [[maximum(size(leftvecs_pairings[j][l][s],1) for j in eachindex(sdp.A) for l in eachindex(sdp.A[j]) for s=1:size(sdp.A[j][l],2) if s == sf),
                 maximum(size(rightvecs_pairings[j][l][s],2) for j in eachindex(sdp.A) for l in eachindex(sdp.A[j]) for s=1:size(sdp.A[j][l],2) if s == sf)] for sf=1:max_s]
@@ -206,8 +210,10 @@ function solvesdp(
             end 
             delta = div(size(Y.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
             for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)
-                cur_right = hcat([sdp.A[j][l][r,s][p].rightevs[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].rightevs)]...)
-                cur_left = hcat([sdp.A[j][l][r,s][p].leftevs[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].leftevs)]...)
+                cur_right = ArbRefMatrix(hcat([sdp.A[j][l][r,s][p].vs[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].vs)]...), prec=prec)
+                Arblib.get_mid!(cur_right,cur_right)
+                cur_left = ArbRefMatrix(hcat([sdp.A[j][l][r,s][p].ws[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].ws)]...), prec=prec)
+                Arblib.get_mid!(cur_left,cur_left)
                 if size(cur_left,1) == 0
                     vecs_left[j][l][r,s] = ArbRefMatrix(delta,0,prec=prec)
                 else
@@ -230,18 +236,18 @@ function solvesdp(
             "iter","time(s)","μ","P-obj","D-obj","gap","P-error","p-error","d-error","α_p","α_d","beta"
         )
 	end
-    alpha_p = alpha_d = Arb(0, prec = prec)
+    alpha_p = alpha_d = AL.Arb(0, prec=prec)
     mu = dot(X, Y) / size(X, 1)
     # Preallocation. In principle we can collect them in a struct or something like that and use them that way.
 	# Then we only need to give e.g. Variables and Preallocated to functions instead of e.g. P,p,d, dX,dY,dx,dy
     # We overwrite R, X_inv, S and A_Y in each iteration.
     R = similar(X)
     X_inv = similar(X)
-    S = [ArbRefMatrix(size(sdp.c[j],1), size(sdp.c[j],1), prec = prec) for j in eachindex(sdp.c)]
+    S = [ArbRefMatrix(size(sdp.c[j],1), size(sdp.c[j],1), prec=prec) for j in eachindex(sdp.c)]
     A_Y = [[
-        [ArbRefMatrix(size(vecs_left[j][l][r,s],2), 1, prec = prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)
+        [ArbRefMatrix(size(vecs_left[j][l][r,s],2), 1, prec=prec) for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)] for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)
     ]
-    part_r = ArbRefMatrix(max_blocksize,maximum(maxsize[r][2] for r=1:max_s),prec=matmul_prec)
+    part_r = ArbRefMatrix(max_blocksize,maximum(maxsize[r][2] for r=1:max_s), prec=matmul_prec)
     P = similar(X)
     d = similar(x)
     p = similar(y)
@@ -252,10 +258,8 @@ function solvesdp(
     bilinear_pairings_Y = [ArbRefMatrix(maxsize[r][1], maxsize[s][2], prec=matmul_prec) for r=1:max_s, s = 1:max_s]
     bilinear_pairings_Xinv = [ArbRefMatrix(maxsize[r][1], maxsize[s][2], prec=matmul_prec) for r=1:max_s, s = 1:max_s]
 
-    LinvB = [
-        ArbRefMatrix(size(sdp.c[j],1), size(sdp.b,1), prec = prec) for j in eachindex(sdp.A)
-    ]
-    Q = ArbRefMatrix(size(sdp.b,1),size(sdp.b,1),prec=prec)
+    LinvB = [ArbRefMatrix(size(sdp.c[j],1), size(sdp.b,1), prec=prec) for j in eachindex(sdp.A)]
+    Q = ArbRefMatrix(size(sdp.b,1),size(sdp.b,1), prec=prec)
     tempX = [similar(X),similar(X)] # we need this scratch space several times each iteration
     #errors and feasibility
     p_obj = compute_primal_objective(sdp, x)
@@ -289,6 +293,7 @@ function solvesdp(
             dual_error_threshold,
             need_primal_feasible,
             need_dual_feasible,
+            correctoronly
         )
     )
         if iter > maxiterations
@@ -299,7 +304,12 @@ function solvesdp(
         GC.gc(false) #not sure if needed
         #step 3
         mu = dot(X, Y) / size(X, 1)
-        mu_p = pd_feas ? zero(mu) : beta_infeasible * mu # zero(mu) keeps the precision
+		if correctoronly
+			mu_p = mu
+		else
+			mu_p = pd_feas ? zero(mu) : beta_infeasible * mu # zero(mu) keeps the precision
+		end
+
         if mu > max_complementary_gap
             println("The maximum complementary gap has been exceeded (mu = $mu).")
             error_code[1] = 3
@@ -319,9 +329,8 @@ function solvesdp(
                     X_inv.blocks[j].blocks[l],
                 ) #ignore the error bounds. Most of the error bounds will be 0 due to the use of approx_cholesky already
                 if status == 0
-                    @show j,l
                     throw(SolverFailure(
-                        "The cholesky decomposition of X was not computed correctly. Try again with higher precision",
+                        "The cholesky decomposition of X was not computed correctly in block ($j,$l). Try again with higher precision",
                     ))
                 end
             end
@@ -356,7 +365,7 @@ function solvesdp(
         r = (dot(X, Y) + dot(X, dY) + dot(dX, Y) + dot(dX, dY)) / (mu * size(X, 1)) 
         beta = r < 1 ? r^2 : r
         beta_c =
-            pd_feas ? min(max(beta_feasible, beta), Arb(1, prec = prec)) :
+            pd_feas ? min(max(beta_feasible, beta), AL.Arb(1, prec=prec)) :
             max(beta_infeasible, beta)
         mu_c = beta_c * mu
 
@@ -421,7 +430,6 @@ function solvesdp(
                 Arblib.get_mid!(Y.blocks[j].blocks[l], Y.blocks[j].blocks[l])
             end
         end
-
         # We save the times of everything except for the first iteration, as they may include compile time
         if iter >= 2
             timings[1] += time_decomp
@@ -457,7 +465,7 @@ function solvesdp(
             println("X inv:", time_inv, ". R:", time_R, ". residuals p,P,d:", time_res)
         end
         # print the objectives of the start of the iteration, imitating simmons duffin
-        # This might be a bit weird, because we only know the step lengths at the end of the iteration
+        # This might be a bit weird, because we only know the 1+sum(sizes[1:r-1]):1+sum(sizes[1:r])step lengths at the end of the iteration
         if verbose
 			@printf(
                 "%5d %8.1f %11.3e %11.3e %11.3e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e\n",
@@ -506,12 +514,51 @@ function solvesdp(
         if hasfield(typeof(e),:msg)
             println(e.msg)
         end
-
         println("We return the current solution and optimality status.")
         error_code[1] = 1 #general errors
     end #of try/catch
     time_total = time() - time_start #this may include compile time
-	results = CLRSResults(x, X, y, Y, compute_primal_objective(sdp, x), compute_dual_objective(sdp,y, Y), sdp.matrix_coeff_names, sdp.free_coeff_names)
+
+    p_obj = compute_primal_objective(sdp, x)
+    d_obj = compute_dual_objective(sdp,y, Y)
+    dual_gap = compute_duality_gap(p_obj, d_obj)
+    primalobj = BigFloat(p_obj)
+    dualobj = BigFloat(d_obj)
+    X = BlockDiagonal([BlockDiagonal([BigFloat.(s) for s in W.blocks]) for W in X.blocks])
+    Y = BlockDiagonal([BlockDiagonal([BigFloat.(s) for s in W.blocks]) for W in Y.blocks])
+    x = BigFloat.(x[:,1])
+    y = BigFloat.(y[:,1])
+
+	matrixvars = Dict{Any,Matrix{BigFloat}}()
+    matrixvars_primal = Dict{Any,Matrix{BigFloat}}()
+
+    # we assume that subblocks are all of the same size
+    for j in eachindex(sdp.matrix_coeff_names)
+        for k in eachindex(sdp.matrix_coeff_names[j])
+            use_block, nsubblocks = sdp.matrix_coeff_blocks[j][k]
+            totalsize = size(Y.blocks[j].blocks[k],1)
+            sizes = [div(totalsize, nsubblocks) for i=1:nsubblocks]
+            for r=1:nsubblocks, s=1:nsubblocks # we will return the whole square matrix
+                hs = 1+sum(sizes[1:r-1]):sum(sizes[1:r])
+                vs = 1+sum(sizes[1:s-1]):sum(sizes[1:s])
+                if use_block
+                    bl = Block(sdp.matrix_coeff_names[j][k], r, s)
+                else
+                    @assert nsubblocks == 1
+                    bl = sdp.matrix_coeff_names[j][k]
+                end
+                matrixvars[bl] = Y.blocks[j].blocks[k][hs, vs]
+                matrixvars_primal[bl] = X.blocks[j].blocks[k][hs, vs]
+            end
+        end
+    end
+    freevars = Dict{Any,BigFloat}()
+    for j in eachindex(sdp.free_coeff_names)
+        name = sdp.free_coeff_names[j]
+        freevars[name] = y[j]
+    end
+	dualsol = DualSolution{BigFloat}(BigFloat, matrixvars, freevars)
+	primalsol = PrimalSolution{BigFloat}(BigFloat, x, matrixvars_primal)
 
     if verbose
 		@printf(
@@ -584,9 +631,9 @@ function solvesdp(
             )
             @printf("%11.4e %11.4e %11.4e %11.4e %11.4e %11.4e\n\n", allocs...)
         end
-		println("\nPrimal objective:", results.primal_objective)
-		println("Dual objective:", results.dual_objective)
-		println("Duality gap:", compute_duality_gap(results.primal_objective, results.dual_objective))
+		println("\nPrimal objective:", primalobj)
+		println("Dual objective:", dualobj)
+		println("Duality gap:", BigFloat(dual_gap))
 
     end
 
@@ -608,7 +655,7 @@ function solvesdp(
         status = NotConverged()
     end
 
-    return status, results, time_total, error_code[1] #maybe wrap time & error code in something like SolverStatistics?
+    status, primalsol, dualsol, time_total, error_code[1]
 end
 
 """Compute the primal objective <c, x> + constant"""
@@ -627,7 +674,7 @@ end
 
 """Compute the error (max abs (P_ij)) of a blockdiagonal matrix"""
 function compute_error(P::BlockDiagonal)
-    max_P = Arb(0, prec = precision(P))
+    max_P = AL.Arb(0, prec=precision(P))
     for b in P.blocks
         Arblib.max!(max_P, compute_error(b), max_P)
     end
@@ -636,8 +683,8 @@ end
 
 """Compute the error (max abs(d_ij)) of an ArbMatrix"""
 function compute_error(d::ArbRefMatrix)
-    max_d = Arb(0, prec = precision(d))
-    abs_temp = Arb(0, prec = precision(d))
+    max_d = AL.Arb(0, prec=precision(d))
+    abs_temp = AL.Arb(0, prec=precision(d))
     for i = 1:size(d, 1)
         for j = 1:size(d, 2)
             Arblib.max!(max_d, max_d, Arblib.abs!(abs_temp,d[i,j]))
@@ -670,7 +717,7 @@ end
 
 """Compute <c,x> where c is distributed over constraints"""
 function dot_c(sdp, x)
-    res = Arb(0, prec = precision(x))
+    res = AL.Arb(0, prec = precision(x))
     x_idx = 1
     for j = 1:length(sdp.c)
         for i = 1:length(sdp.c[j])
@@ -684,7 +731,7 @@ end
 """Compute the dual residue d = c - <A_*, Y> - By"""
 function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ranks)
     cur_idx = 0
-    w = ArbRefMatrix(0,0)
+    w = ArbRefMatrix(0, 0, prec=precision(y))
     for j in eachindex(sdp.c)
         Arblib.window_init!(w, d, cur_idx, 0,cur_idx+size(sdp.c[j],1), 1)
         
@@ -701,7 +748,8 @@ function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ra
 end
 
 """Compute the residuals P,p and d."""
-function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pairings,rightvecs_pairings,high_ranks)
+function
+compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pairings,rightvecs_pairings,high_ranks)
     # P = ∑_i x_i A_i - X - C, (+ C if we are minimizing)
     compute_weighted_A!(P, sdp, x,leftvecs_pairings,high_ranks)
     Threads.@threads for (j,l) in threadinginfo.jl_order
@@ -740,16 +788,15 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pair
 end
 
 """Determine whether the main loop should terminate or not"""
-function terminate(
-    duality_gap,
-    primal_error,
-    dual_error,
-    duality_gap_threshold,
-    primal_error_threshold,
-    dual_error_threshold,
-    need_primal_feasible,
-    need_dual_feasible,
-)
+function terminate(duality_gap,
+    	primal_error,
+    	dual_error,
+    	duality_gap_threshold,
+    	primal_error_threshold,
+    	dual_error_threshold,
+    	need_primal_feasible,
+    	need_dual_feasible,
+    	correctoronly)
     #NOTE: We might also need termination criteria for when the problem is infeasible. e.g. a too large primal/dual objective
     # We convert to BigFloats to avoid unexpected results due to large error bounds.
     # This is (probably) only important when increasing the precision during the solving, or not at all
@@ -764,7 +811,7 @@ function terminate(
         println("Dual feasible solution found")
         return true
     end
-    if primal_feas && dual_feas && duality_gap_opt
+    if !correctoronly && primal_feas && dual_feas && duality_gap_opt
         println("Optimal solution found")
         return true
     end
@@ -804,7 +851,7 @@ function compute_residual_R!(R, X, Y, mu, dX, dY, tempX, threadinginfo)
     return R
 end
 
-function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precision(sdp.b))
+function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec)
     #In this function we precompute the matrices [v^j,l_p,r,s ...] for the matrix multiplications Vl*Y*Vr and Vl*X^-1 * Vr, and the indexing j,l,p,r,s -> column/row
     # This only has to be done once, so performance does not have a high priority here.
     # We try to remove duplicates, because that is the main difference between the old and new format for things like binary sphere packing.
@@ -831,7 +878,7 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
                 # NOTE: this assumes that sdp.A[j][l][r,s][p] = transpose(sdp.A[j][l][s,r][p]). We need to make sure that that is the case.
                 # This is the only place where we really need it. (and where we use these matrices)
                 # vectors for this combination of j,l,r
-                right = [sdp.A[j][l][r,s][p].rightevs[rnk] for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]
+                right = [sdp.A[j][l][r,s][p].vs[rnk] for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].lambda)]
                 if length(right) == 0
                     push!(rightvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
                     pointers_right[j][l][r] = Dict{Tuple{Int,Int,Int},Int}() #nothing to point to, and nothing which points to anything
@@ -839,7 +886,7 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
                     #remove duplicates
                     unique_right = unique_idx(right)
                     #points to the column with the vector we want
-                    pntr_right = Dict((s,p,rnk) => findfirst(x-> right[x]==right[i], unique_right) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]))
+                    pntr_right = Dict((s,p,rnk) => findfirst(x-> right[x]==right[i], unique_right) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].lambda)]))
                     pointers_right[j][l][r] = pntr_right
                     unique_right_arb = ArbRefMatrix(size(right[1],1),length(unique_right), prec=prec)
                     for (i, i_vec) in enumerate(unique_right)
@@ -852,7 +899,7 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
                 end
 
                 # We do the same for the left eigenvectors
-                left = [sdp.A[j][l][r,s][p].leftevs[rnk] for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]
+                left = [sdp.A[j][l][r,s][p].ws[rnk] for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].lambda)]
                 if length(left) == 0
                     push!(leftvecs[j][l], ArbRefMatrix(subblocksizes[j][l],0,prec=prec))
                     pointers_left[j][l][r] = Dict{Tuple{Int,Int,Int},Int}()
@@ -860,7 +907,7 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec = precis
                     #remove duplicates
                     unique_left = unique_idx(left)
                     #points to the column with the vector we want
-                    pntr_left = Dict((s,p,rnk) => findfirst(x-> left[x]==left[i], unique_left) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]))
+                    pntr_left = Dict((s,p,rnk) => findfirst(x-> left[x]==left[i], unique_left) for (i,(s,p,rnk)) in enumerate([(s,p,rnk) for s=1:size(sdp.A[j][l],2) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].lambda)]))
                     pointers_left[j][l][r] = pntr_left
                     unique_left_arb = ArbRefMatrix(length(unique_left),size(left[1],1), prec=prec)
                     for (i, i_vec) in enumerate(unique_left)
@@ -896,9 +943,9 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
     end
     base = Sys.free_memory()/1024^3 #in GB
 
-    temp_window = ArbRefMatrix(0,0)
-    temp_window2 = ArbRefMatrix(0,0)
-    part_r = ArbRefMatrix(0,0)
+    temp_window = ArbRefMatrix(0,0, prec=matmul_prec)
+    temp_window2 = ArbRefMatrix(0,0, prec=matmul_prec)
+    part_r = ArbRefMatrix(0,0, prec=matmul_prec)
     for j in eachindex(sdp.A)
         Arblib.zero!(S[j])
         for l in eachindex(sdp.A[j])
@@ -920,7 +967,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                     # We only do the upper triangular part here, so q >= p
                     qs = [q for q in keys(sdp.A[j][l][1,1]) if q >= p]
                     Threads.@threads for q in qs
-                        Arblib.add!(S[j][p,q],S[j][p,q], dot(tempX[2].blocks[j].blocks[l], sdp.A[j][l][1,1][q]))
+                        Arblib.add!(S[j][p,q],S[j][p,q], dot(sdp.A[j][l][1,1][q],tempX[2].blocks[j].blocks[l]))
                     end
                 end
             else # low rank case
@@ -975,7 +1022,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                         Arblib.zero!(A_Y[j][l][r,s])
                         idx = 1
                         for p in keys(sdp.A[j][l][r,s])
-                            for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
+                            for rnk=1:length(sdp.A[j][l][r,s][p].lambda)
                                 #This way we have A_Y in the order of [for p in Ps for i=1:rank]
                                 # here we take the transpose element, since we only have the bilinear pairings for r <= s
                                 # if r != s
@@ -999,7 +1046,7 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                         # We need collect to combine keys(Dict()) with @threads, since @threads need an ordering and the keys are unordered
                         Threads.@threads for p in collect(keys(sdp.A[j][l][r1,s1]))
                             #NOTE: for high p, we do less q. So this may not be very well balanced. the order through keys may be kind of random, so this may be a better ordering than sorted
-                            tot = Arb(prec=prec)
+                            tot = AL.Arb(prec=prec)
                             for r2=1:size(sdp.A[j][l],1)
                                 for s2=1:size(sdp.A[j][l],2)
                                     for q in keys(sdp.A[j][l][r2,s2])
@@ -1007,15 +1054,15 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                                         if q<p
                                             continue
                                         end
-                                        for rnk1 = 1:length(sdp.A[j][l][r1,s1][p].eigenvalues)
-                                            for rnk2 = 1:length(sdp.A[j][l][r2,s2][q].eigenvalues)
+                                        for rnk1 = 1:length(sdp.A[j][l][r1,s1][p].lambda)
+                                            for rnk2 = 1:length(sdp.A[j][l][r2,s2][q].lambda)
                                                 #NOTE: we only have the bilinear pairings for r <= s. In the other case, we need to take the transpose element
                                                 #S[j][p,q] += λ_p * λ_q * bilinearX * bilinearY.
                                                 # The two comparisons do not add much to the time, but save 50% when both eigenvalues are 1.
                                                 # Also, in general it is easy to get 1, just multiply one of the vectors by the eigenvalue. But that might give more unique eigenvectors
-                                                if sdp.A[j][l][r1,s1][p].eigenvalues[rnk1] != sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] || sdp.A[j][l][r2,s2][q].eigenvalues[rnk2] != 1
-                                                    Arblib.mul!(tot,sdp.A[j][l][r1,s1][p].eigenvalues[rnk1],
-                                                        sdp.A[j][l][r2,s2][q].eigenvalues[rnk2])
+                                                if sdp.A[j][l][r1,s1][p].lambda[rnk1] != sdp.A[j][l][r2,s2][q].lambda[rnk2] || sdp.A[j][l][r2,s2][q].lambda[rnk2] != 1
+                                                    Arblib.mul!(tot,sdp.A[j][l][r1,s1][p].lambda[rnk1],
+                                                        sdp.A[j][l][r2,s2][q].lambda[rnk2])
                                                     Arblib.mul!(tot,tot,bilinear_pairings_Xinv[s1,r2][pointers_left[j][l][s1][(r1,p,rnk1)],pointers_right[j][l][r2][(s2,q,rnk2)]])
                                                     Arblib.addmul!(S[j][p,q],tot,bilinear_pairings_Y[s2,r1][pointers_left[j][l][s2][(r2,q,rnk2)],pointers_right[j][l][r1][(s1,p,rnk1)]])
                                                 else #both eigenvalues are 1, so we don't have to multiply by them
@@ -1065,7 +1112,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
             succes = approx_cholesky!(S[j])
             Arblib.get_mid!(S[j],S[j])
             if succes == 0
-                throw(SolverFailure("S was not decomposed succesfully, try again with higher precision"))
+                throw(SolverFailure("S was not decomposed succesfully in block $j, try again with higher precision"))
             end
         end
     end
@@ -1111,7 +1158,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(Z))
     Arblib.zero!(result)
     #result has one entry for each (j,p) tuple
-    res = Arb(prec=precision(Z)) #we use this every iteration, but we set it to zero when needed
+    res = AL.Arb(prec=precision(Z)) #we use this every iteration, but we set it to zero when needed
     j_idx = 0 #the offset of the constraint index depending on the cluster
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
@@ -1120,7 +1167,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
             if high_ranks[j][l]
                 #high rank matrices only have 1 subblock
                 for p in keys(sdp.A[j][l][1,1])
-                    Arblib.add!(result[j_idx + p], dot(Z.blocks[j].blocks[l], sdp.A[j][l][1,1][p]),result[j_idx + p])  
+                    Arblib.add!(result[j_idx + p], dot(sdp.A[j][l][1,1][p], Z.blocks[j].blocks[l]),result[j_idx + p])  
                 end
             else
                 ones = ArbRefMatrix(1,delta,prec=precision(Z))
@@ -1138,15 +1185,14 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
                         min_thread_size = div(size(vecs_right[j][l][r,s],2), used_threads)
                         # we add 1 to the first k threads such that all columns are being used
                         thread_sizes = [min_thread_size + (used_threads*min_thread_size + i <= size(vecs_right[j][l][r,s],2) ? 1 : 0) for i=1:used_threads]
-                        indices = unique([0, cumsum(thread_sizes)...])
-                        used_threads = length(indices)-1
+                        indices = [0, cumsum(thread_sizes)...]
                         result_parts = [ArbRefMatrix(1,indices[i+1]-indices[i],prec=precision(Z)) for i=1:used_threads]
 
                         #apply the matrix multiplications: ones * (V_l o (Z * V_r))
                         Threads.@threads for i=1:used_threads
                             #window matrices
-                            w1 = ArbRefMatrix(0,0)
-                            w2 = ArbRefMatrix(0,0)
+                            w1 = ArbRefMatrix(0, 0 ,prec=precision(Z))
+                            w2 = ArbRefMatrix(0, 0, prec=precision(Z))
                             Arblib.window_init!(w1, Z.blocks[j].blocks[l], (r-1)*delta, (s-1)*delta, r*delta, s*delta)
                             Arblib.window_init!(w2,vecs_right[j][l][r,s], 0, indices[i], size(vecs_right[j][l][r,s],1), indices[i+1])
                             ZV = ArbRefMatrix(delta,indices[i+1]-indices[i],prec=precision(Z))
@@ -1167,8 +1213,8 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
                         idx = 1
                         for p in keys(sdp.A[j][l][r,s])
                             Arblib.zero!(res)
-                            for rnk=1:length(sdp.A[j][l][r,s][p].rightevs)
-                                Arblib.addmul!(res,sdp.A[j][l][r,s][p].eigenvalues[rnk],result_part[1,idx])
+                            for rnk=1:length(sdp.A[j][l][r,s][p].vs)
+                                Arblib.addmul!(res,sdp.A[j][l][r,s][p].lambda[rnk],result_part[1,idx])
                                 idx+=1
                             end
                             if r != s #We need to take both sides of the matrix into account
@@ -1188,7 +1234,7 @@ end
 function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks)
     #Here we have precomputed v^T A v already, so we dont need the vectors. But it also doesnt cost extra time, so for ease of programming we allow them
     # So what we still need to do is get the right entries from A_Y, multiply them by the right eigenvalues and sum them to get entries corresponding to (j,p)
-    result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(sdp.b))
+    result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(Y))
     #we can parallellize over the constraints because we calculate the index. For clusters with few constraints this might be slower than not parallelizing
     j_idx = 0
     for j in eachindex(sdp.A)
@@ -1197,19 +1243,19 @@ function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks)
             if high_ranks[j][l]
                 #high rank matrices have only one subblock
                 for p in keys(sdp.A[j][l][1,1])
-                    Arblib.add!(result[j_idx + p], dot(Y.blocks[j].blocks[l], sdp.A[j][l][1,1][p]),result[j_idx + p])  
+                    Arblib.add!(result[j_idx + p], dot(sdp.A[j][l][1,1][p],Y.blocks[j].blocks[l]),result[j_idx + p])  
                 end
             else
                 for r=1:size(sdp.A[j][l],1)
                     for s=1:r
-                        # index_to_prnk = [(p,rnk) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)]
+                        # index_to_prnk = [(p,rnk) for p in keys(sdp.A[j][l][r,s]) for rnk=1:length(sdp.A[j][l][r,s][p].lambda)]
                         # prnk_to_index = Dict((p,rnk)=>i for (i,(p,rnk)) in enumerate(index_to_prnk))
                         idx = 1
                         for p in collect(keys(sdp.A[j][l][r,s])) # We need collect to use @threads with keys(Dict())
-                            tot = Arb(0,prec=precision(sdp.b))
-                            for rnk=1:length(sdp.A[j][l][r,s][p].eigenvalues)
+                            tot = AL.Arb(0,prec=precision(Y))
+                            for rnk=1:length(sdp.A[j][l][r,s][p].lambda)
                                 #contribution for this p is
-                                Arblib.addmul!(tot,A_Y[j][l][r,s][idx,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
+                                Arblib.addmul!(tot,A_Y[j][l][r,s][idx,1],sdp.A[j][l][r,s][p].lambda[rnk])
                                 idx+=1
                             end
                             if r!=s #We take both s,r and r,s into account
@@ -1247,7 +1293,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
             else              
                 delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
                 #initialize the scratch spaces
-                cur = Arb(1,prec=precision(a))
+                cur = AL.Arb(1,prec=precision(a))
                 vec = ArbRefMatrix(delta,1,prec=precision(a))
                 
                 for r = 1:size(sdp.A[j][l],1)
@@ -1256,13 +1302,13 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
                         # Approach: sum_i a_i A_i can be written as V_i D V_i^T, with D diagonal (λ_i,rnk * a_i)
                         # Now we compute V_r D
                         # Scratch space:
-                        # Note that vecs_right has the same number of vectors as vecs_left, of the same size, because A[j][l][r,s] has the same number of leftevs as rightevs
+                        # Note that vecs_right has the same number of vectors as vecs_left, of the same size, because A[j][l][r,s] has the same number of ws as vs
                         vecs_right = ArbRefMatrix(size(vecs_left[j][l][r,s],2), size(vecs_left[j][l][r,s],1),prec=precision(a)) #V_rD. So we multiply every vector (column) by the corresponding eigenvalue
                         idx = 1
                         for p in keys(sdp.A[j][l][r,s])
-                            for rnk in eachindex(sdp.A[j][l][r,s][p].eigenvalues)
-                                Arblib.mul!(cur,a[j_idx+p,1],sdp.A[j][l][r,s][p].eigenvalues[rnk])
-                                Arblib.mul!(vec, sdp.A[j][l][r,s][p].rightevs[rnk],cur)
+                            for rnk in eachindex(sdp.A[j][l][r,s][p].lambda)
+                                Arblib.mul!(cur,a[j_idx+p,1],sdp.A[j][l][r,s][p].lambda[rnk])
+                                Arblib.mul!(vec, sdp.A[j][l][r,s][p].vs[rnk],cur)
                                 Arblib.window_init!(w, vecs_right, idx-1, 0,idx, delta)
                                 Arblib.transpose!(w, vec)
                                 Arblib.window_clear!(w)
@@ -1448,8 +1494,10 @@ function compute_step_length(
     prec = precision(M) #*2 #test if increasing the precision in this part of the code helps for the rest
     # We parallellize over j and l, but need the total minimum. We save the minimum for every (j,l)
     # We actually just need to keep track of the minimum for every thread, but it doesn't matter much
-    min_eig_arb = [[Arb(Inf) for l in eachindex(M.blocks[j].blocks)] for j in eachindex(M.blocks)]
+    min_eig_arb = [[AL.Arb(Inf, prec=precision(M)) for l in eachindex(M.blocks[j].blocks)] for j in eachindex(M.blocks)]
     Threads.@threads for (j,l) in threadinginfo.jl_order
+        #@show M
+        #@show dM
         if size(M.blocks[j].blocks[l],1) == 1
             # M_j,l is just a 1x1 matrix
             # So L^-1 dM L^-T = dM/M
@@ -1469,12 +1517,13 @@ function compute_step_length(
             Arblib.get_mid!(tempX[2].blocks[j].blocks[l],tempX[2].blocks[j].blocks[l])
             #temp tempX[2].blocks[j].blocks[l] = chol^-1 (chol^-1 dMblock)^T
             Arblib.approx_solve_tril!(tempX[2].blocks[j].blocks[l], tempX[1].blocks[j].blocks[l], tempX[2].blocks[j].blocks[l], 0)
+            # @show [Float64.(x) for x in tempX]
             #because we can usually use floating point numbers for this, we use a julia implementation of the Lanczos method in KrylovKit
             #TODO: extra check that the converged eigenvalue/vector pair is also converged in high precision?
             values, vecs, info = eigsolve(Float64.(tempX[2].blocks[j].blocks[l]), 1, :SR; krylovdim = 10, maxiter = min(100,size(tempX[2].blocks[j].blocks[l],1)),tol=10^-5, issymmetric=true, eager=true)
 
             if info.converged >= 1
-                min_eig_arb[j][l] = Arb(values[1],prec=prec) - 10^-5 #tolerance, so this surely is smaller than the minimum eigenvector
+                min_eig_arb[j][l] = AL.Arb(values[1],prec=prec) - 10^-5 #tolerance, so this surely is smaller than the minimum eigenvector
                 continue
             end
 
@@ -1486,7 +1535,7 @@ function compute_step_length(
             if succes2 == 0 #even in this case it is possible that the output is accurate enough. But that is difficult to detect. Anyway, the cholesky for S or Q usually fail first
                 throw(SolverFailure("The eigenvalues could not be computed during the computation of the step length. Please try again with a higher precision."))
             else
-                real_arb = Arb(0, prec = prec)
+                real_arb = AL.Arb(0, prec = prec)
                 for i = 1:length(eigenvalues)
                     Arblib.get_real!(real_arb, eigenvalues[i])
                     Arblib.min!(min_eig_arb[j][l],real_arb,min_eig_arb[j][l])
@@ -1502,8 +1551,8 @@ function compute_step_length(
 
 
     if min_eig > -gamma # 1 is the maximum step length
-        return Arb(1, prec = prec)
+        return AL.Arb(1, prec = prec)
     else
-        return Arb(-gamma / min_eig, prec = prec)
+        return AL.Arb(-gamma / min_eig, prec = prec)
     end
 end

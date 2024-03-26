@@ -79,24 +79,25 @@ function remove_empty_mats!(sdp::ClusteredLowRankSDP)
     end
 end
 """
-Check if the matrix A is empty
+Check if the matrix A is empty or the zero matrix
 """
 function is_empty(A::LowRankMat)
-    return length(A.leftevs) == 0 || length(A.leftevs[1]) == 0
+    return length(A.ws) == 0 || length(A.ws[1]) == 0 || all(iszero, A.lambda) || all(x->all(iszero, x), A.ws) || all(x->all(iszero, x), A.vs)
 end
 function is_empty(A::ArbRefMatrix)
-    return size(A) == (0,0)
+    return size(A) == (0,0) || A == zero(A)
 end
+
 
 function check_mat(A::Union{LowRankMat, LowRankMatPol})
     #same number of vectors and values, same lengths of vectors
-    correct = length(A.leftevs) == length(A.rightevs) == length(A.eigenvalues) && all(length(v) == length(A.leftevs[1]) == length(w)  for (v,w) in zip(A.leftevs, A.rightevs))
+    correct = length(A.ws) == length(A.vs) == length(A.lambda) && all(length(v) == length(A.ws[1]) == length(w)  for (v,w) in zip(A.ws, A.vs))
     if !correct
         @info "A coefficient matrix does not have a correct decomposition (it needs the same number of vectors as values, and the vectors need to be of the same length)"
     end
     return correct
 end
-check_mat(A::AbstractMatrix) = true
+check_mat(A::AbstractMatrix) = size(A,1) == size(A,2)
 
 """
     check_sdp!(sdp::ClusteredLowRankSDP)
@@ -115,7 +116,7 @@ end
 
 Check for obvious mistakes in the constraints and objective
 """
-function check_problem(prob::LowRankPolProblem)
+function check_problem(prob::Problem)
     everythingokay = true
     #perform checks on the problem
     for c in prob.constraints
@@ -127,7 +128,7 @@ end
 """
 Check whether the objective uses variables that are also used in the constriants
 """
-function check_objective(prob::LowRankPolProblem)
+function check_objective(prob::Problem)
     all_found = true
     for p in keys(prob.objective.matrixcoeff)
         key_found = false

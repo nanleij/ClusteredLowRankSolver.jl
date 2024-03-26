@@ -1,4 +1,4 @@
-# Example: Binary sphere packing
+# [Example: Binary sphere packing](@id exspherepacking)
 This is a slightly more advanced example, which uses the non-diagonal block structure of the constraint matrices. We consider the maximum density which can be obtained by packing spheres with radii ``r_1, \ldots, r_N`` in ``\R^n``. In [de-laat-upper-2014](@cite) the Cohn-Elkies linear programming bound for sphere packing densities [cohn-new-2003](@cite) is generalized to ``N`` radii. We will follow their approach to define an optimization problem in terms of polynomial equality constraints.
 
 !!! compat "Theorem"
@@ -22,7 +22,7 @@ where ``A_k`` are real, symmetric ``N \times N`` matrices, and ``L_k^{n/2-1}`` i
 ```
 We can apply this constraint element-wise to get ``N(N-1)/2`` constraints enforcing the first requirement.
 
-Using the theory of matrix polynomial programs (see e.g. [de-laat-clustered-2022](@cite)), we know that the second requirement is fulfilled if and only if there are positive semidefinite matrices ``Y_1`` and ``Y_2`` such that
+Using the theory of matrix polynomial programs (see, e.g., [de-laat-clustered-2022](@cite)), we know that the second requirement is fulfilled if and only if there are positive semidefinite matrices ``Y_1`` and ``Y_2`` such that
 ```math
 \hat{f}(t)_{ij} = \langle b(t)b(t)^{\sf T} \otimes E_{ij}, Y_1 \rangle + \langle tb(t)b(t)^{\sf T} \otimes E_{ij}, Y_2 \rangle
 ```
@@ -38,12 +38,12 @@ Finally, the objective can be modelled by introducing a free variable ``M`` and 
 ```math
 f_{ii}(0) \leq M
 ```
-where we minimize over ``M``. This assures that ``M = \max\{f_{ii}(0)\}``, which equals the bound given by the function ``f``.
+where we minimize over ``M``. This assures that ``M = \max\{f_{ii}(0)\}``, which equals the bound given by ``f``.
 
-In the following, we will show how to model the second type of constraint. This constraint contains the internal block structure, which is not present in the previous example of the Delsarte linear programming bound. For this, we assume we defined a certain maximum degree `d` and the dimension `n`.
-We use the packages `AbstractAlgebra`, `ClusteredLowRankSolver` and `BasesAndSamples`. As in the previous example, we first construct a suitable basis and sample points.
+In the following, we will show how to model the second type of constraint. This constraint contains the internal block structure, which is not present in the previous example of the [Delsarte linear programming bound](@ref exdelsarte). For this, we assume we defined a certain maximum degree `d` and the dimension `n`.
+We use the packages `AbstractAlgebra` and `ClusteredLowRankSolver`. As in the previous example, we first construct a suitable basis and sample points.
 ```julia
-R, (x,) = PolynomialRing(RealField, ["x"])
+R, x = polynomial_ring(RealField, :x)
 
 basis = basis_laguerre(2d+1, BigFloat(n)/2-1, BigFloat(2*pi)*x)
 samples = sample_points_rescaled_laguerre(2d+1)
@@ -53,10 +53,7 @@ Now, for given `i != j` (over which we normally would loop to get all constraint
 ```julia
 free_dict = Dict()
 for k = 0:2d+1
-    # Although we don't need to use the Block structure,
-    # we can of course do it if it is more convenient.
-    # Instead, we could e.g. use (:A, k, i, j) as key
-    free_dict[Block(k, i, j)] = -x^k
+    free_dict[(k, i, j)] = -x^k
 end
 
 psd_dict = Dict()
@@ -68,6 +65,6 @@ psd_dict[Block(:SOS21, j, i)] = LowRankMatPol([R(1//2)], [basis[1:d+1]])
 psd_dict[Block(:SOS22, i, j)] = LowRankMatPol([1//2*x], [basis[1:d+1]])
 psd_dict[Block(:SOS22, j, i)] = LowRankMatPol([1//2*x], [basis[1:d+1]])
 
-constr = Constraint(R(0), psd_dict, free_dict, samples)
+constr = Constraint(0, psd_dict, free_dict, samples)
 ```
-For `i = j`, the definition is similar, except that we do not need to distribute the constraint matrices over two blocks. See the [Examples](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples) folder for the full code.
+For `i = j`, the definition is similar, except that we do not need to distribute the constraint matrices over two blocks. See the [SpherePacking.jl](https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples/SpherePacking.jl) for the full code.
