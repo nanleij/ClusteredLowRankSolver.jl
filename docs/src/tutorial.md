@@ -44,7 +44,7 @@ The problem parameters are now
 We will start with building a function that takes these parameters, and constructs the [`Problem`](@ref). Since the user will give the polynomial `f` and the weights, we need to extract the polynomial ring and the polynomial variables.
 
 ```@example running; continued=true
-using ClusteredLowRankSolver, Nemo, Combinatorics
+using ClusteredLowRankSolver, Nemo
 function min_f(f, ws, d; basis_change=true)
     # extract the polynomial ring
     R = parent(f)
