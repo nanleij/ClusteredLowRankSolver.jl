@@ -3,8 +3,6 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nanleij.github.io/ClusteredLowRankSolver.jl/dev)
 [![Coverage](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/nanleij/ClusteredLowRankSolver.jl)
 
-# ClusteredLowRankSolver.jl
-
 [`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) implements 
   - a primal-dual interior point method for solving semidefinite programming problems;
   - a minimal interface to model semidefinite programming problems including optional polynomial constraints; 
