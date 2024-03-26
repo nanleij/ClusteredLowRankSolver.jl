@@ -60,23 +60,12 @@ function goemans_williamson(L::Matrix)
 end
 ```
 
-The line 
+For a three-cycle, this gives
 ```julia
-    obj = Objective(0, Dict(:A => L), Dict())
+L = [2 -1 -1; -1 2 -1; -1 -1 2]
+obj, X = goemans_williamson(L)
+obj # = 2.24999999999999972300549056142031245384884141740800
 ```
-says the objective is the trace-inner product between the positive semidefinite matrix variable labeled `:A` and the matrix `L`. The `0` in the first argument indicates we do not have a constant offset and the empy `Dict()` in the third argument indicates the objective does not involve any free variables.
-
-The line
-```julia
-    push!(constraints, Constraint(1, Dict(:A => M), Dict()))
-```
-adds the constraint that the ``i``-th entry on the diagonal is equal to one. The first argument `1` of the constructor Constraint is the right-hand-side of the constraint, the second argument is a sum of trace-inner products positive semidefinite matrix variables with the matrix `M`.
-
-After that, the problem is constructed with
-```julia
-    problem = Problem(Maximize(obj), constraints)
-```
-and converted to a semidefinite program and solved using `solvesdp`.
 
 ### Example 2: Finding the global minimum of a univariate polynomial
 To find the minimum of a polynomial ``f`` of degree ``2d``, one can use the following problem
@@ -117,16 +106,60 @@ function polyopt(f, d)
     return objvalue(problem, dualsol)
 end
 ```
-TODO: add example of using the function
+Then we can for example find the minimum of the polynomial ``x^2+1`` using
+```julia
+R, x = polynomial_ring(QQ, :x)
+minvalue = polyopt(x^2+1, 1)
+```
 
+### Exact version of Example 2
+To find the minimum exactly we can use the following function.
+```julia
+using ClusteredLowRankSolver, Nemo
+
+function polyopt_exact(f, d)
+    # Set up the polynomial ring 
+    P = parent(f)
+    u = gen(P)
+
+    # Compute the polynomial basis and the samples
+    sosbasis = basis_chebyshev(d, u)
+    samples = [round(BigInt, 10000x)//10000 for x in sample_points_chebyshev(2d, -1, 1)] 
+
+    # Construct the constraint SOS + lambda = f
+    c = Dict()
+    c[:X] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    constraint = Constraint(f, c, Dict(:lambda => 1), samples)
+
+    # Construct the objective
+    objective = Objective(0, Dict(), Dict(:lambda => 1))
+
+    # Construct the SOS problem: minimize the objective s.t. the constraint holds
+    problem = Problem(Maximize(objective), [constraint])
+
+    #Solve the SDP and return results
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)    
+    
+    success, esol = exact_solution(problem, primalsol, dualsol)
+
+    success, objvalue(problem, esol)
+end
+```
+Then we can find the exact minimum of the polynomial ``x^2+1`` using
+```julia
+R, x = polynomial_ring(QQ, :x)
+polyopt_exact(x^2+1, 1)
+```
 
 ## Citing ClusteredLowRankSolver and the rounding procedure
 The semidefinite programming solver and the interface (including sampled polynomials) in `ClusteredLowRankSolver.jl` have been developed as part of the paper
  - Nando Leijenhorst and David de Laat, [*Solving clustered low-rank semidefinite programs arising from polynomial optimization*](https://arxiv.org/abs/2202.12077), preprint, 2022. arXiv:2202.12077
+
 The solver was inspired by the more specialized solver
 - David Simmons-Duffin. [*A semidefinite program solver for the conformal bootstrap*](https://link.springer.com/article/10.1007/JHEP06(2015)174). J. High Energy Phys. 174 (2015), [arXiv:1502.02033](https://arxiv.org/abs/1502.02033)
 
 The rounding procedure in `ClusteredLowRankSolver.jl` has been developed as part of the paper
- - Henry Cohn, David de Laat, and Nando Leijenhorst, [*Optimality of spherical codes via exact semidefinite programming bounds*](), preprint, 2024. arXiv:???
+ - Henry Cohn, David de Laat, and Nando Leijenhorst, [*Optimality of spherical codes via exact semidefinite programming bounds*](), preprint, 2024. arXiv:2403.16874
+
 This improves the rounding procedure developed in
 - Maria Dostert, David de Laat, and Philippe Moustrou, [*Exact semidefinite programming bounds for packing problems*](https://epubs.siam.org/doi/10.1137/20M1351692), SIAM J. Optim. 31(2) (2021), 1433-1458, [arXiv:2001.00256](https://arxiv.org/abs/2001.00256)
