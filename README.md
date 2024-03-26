@@ -27,7 +27,7 @@ Given a Laplacian `L` of a graph with `n` vertices, the semidefinite programming
 &&&X \in S_+^{n}.
 \end{aligned}
 ```
-where ``E_{ii}`` is the matrix with a one in the ``(i,i)`` entry, and zeros elsewhere. Here ``\langle \cdot, \cdot \rangle`` denotes the trace inner product.
+where $E_{ii}$ is the matrix with a one in the $(i,i)$ entry, and zeros elsewhere. Here $\langle \cdot, \cdot \rangle$ denotes the trace inner product.
 
 The following code implements this using `ClusteredLowRankSolver`.
 
@@ -66,15 +66,15 @@ obj # = 2.24999999999999972300549056142031245384884141740800
 ```
 
 ### Example 2: Finding the global minimum of a univariate polynomial
-To find the minimum of a polynomial ``f`` of degree ``2d``, one can use the following problem
+To find the minimum of a polynomial $f$ of degree $2d$, one can use the following problem
 ```math
 \begin{aligned}
 & \text{minimize} & & \lambda\\
 & \text{subject to} & & f - \lambda = s,\\
 \end{aligned}
 ```
-where ``s`` is a sum-of-squares polynomial of degree ``2d``.
-Let ``m`` be a vector whose entries form a basis of the polynomials up to degree ``d``, then we can write ``s = \langle m(x)m(x)^T, X \rangle`` where ``X`` is a positive semidefinite matrix.
+where $s$ is a sum-of-squares polynomial of degree $2d$.
+Let $m$ be a vector whose entries form a basis of the polynomials up to degree $d$, then we can write $s = \langle m(x)m(x)^T, X \rangle$ where $X$ is a positive semidefinite matrix.
 
 ```julia
 using ClusteredLowRankSolver, Nemo
@@ -104,7 +104,7 @@ function polyopt(f, d)
     return objvalue(problem, dualsol)
 end
 ```
-Then we can for example find the minimum of the polynomial ``x^2+1`` using
+Then we can for example find the minimum of the polynomial $x^2+1$ using
 ```julia
 R, x = polynomial_ring(QQ, :x)
 minvalue = polyopt(x^2+1, 1)
@@ -143,7 +143,7 @@ function polyopt_exact(f, d)
     success, objvalue(problem, esol)
 end
 ```
-Then we can find the exact minimum of the polynomial ``x^2+1`` using
+Then we can find the exact minimum of the polynomial $x^2+1$ using
 ```julia
 R, x = polynomial_ring(QQ, :x)
 polyopt_exact(x^2+1, 1)
