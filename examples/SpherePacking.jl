@@ -102,7 +102,7 @@ function Nsphere_packing(n,d,r,N=length(r);prec=512, kwargs...)
             free_part[(k,i,i)] = factorial(big(k))/BigFloat(pi)^k * laguerre(k, BigFloat(n) / 2 - 1,0)
         end
         free_part[:M] = -1
-        PSD_part[(:slack4,i)] = [1;;]
+        PSD_part[(:slack4,i)] = hcat([1])
         push!(constraints,Constraint(0,PSD_part,free_part))#,[[0]]))
     end
 
@@ -162,7 +162,7 @@ function cohnelkies(n,d,r=1; prec=512, model_prec=prec,  kwargs...)
     end
 
     #for three blocks:
-    PSD_part[:SOS31] = [basis[1]^2;;]
+    PSD_part[:SOS31] = hcat([basis[1]^2])
     #for 4 blocks:
     # PSD_part[:SOS31] = LowRankMatPol([R(1)],[basis[1:d+1]])
     PSD_part[:SOS32] = LowRankMatPol([x-r^2],[basis[1:d+1]])

@@ -25,7 +25,8 @@ function delsarte(n, d, costheta)
     gp = basis_gegenbauer(2d, n, x)
     psd_dict1 = Dict()
     for k = 1:2d
-        psd_dict1[(:a, k)] = [gp[k+1];;]
+        # the syntax [x;;] to create a matrix is not compatible with julia 1.6
+        psd_dict1[(:a, k)] = hcat([gp[k+1]])
     end
 
     psd_dict1[(:SOS, 1)] = LowRankMatPol([1], [sosbasis[1:d+1]])
@@ -37,9 +38,9 @@ function delsarte(n, d, costheta)
     # The variables a_k and the slack variable have coefficient 1:
     psd_dict2 = Dict()
     for k = 1:2d
-        psd_dict2[(:a, k)] = [1;;]
+        psd_dict2[(:a, k)] = hcat([1]) 
     end
-    psd_dict2[:slack] = [1;;]
+    psd_dict2[:slack] = hcat([1])
     constr2 = Constraint(-1, psd_dict2, free_dict2)
 
     problem = Problem(Minimize(obj), [constr1, constr2])

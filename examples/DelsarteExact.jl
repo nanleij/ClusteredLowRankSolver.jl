@@ -18,13 +18,13 @@ function delsarte_exact(n, d, costheta; FF=QQ, g=1, eps=1e-40, kwargs...)
 
     c = Dict()
     for k = 0:2d
-        c[k] = [gbasis[k+1];;]
+        c[k] = hcat([gbasis[k+1]])
     end
     c[:A] = LowRankMatPol([1], [sosbasis[1:d+1]])
     c[:B] = LowRankMatPol([(x+1)*(costheta-x)], [sosbasis[1:d]])
     push!(constraints, Constraint(-1, c, Dict(), samples))
 
-    objective = Objective(1, Dict(k => [1;;] for k=0:2d), Dict())
+    objective = Objective(1, Dict(k => hcat([1]) for k=0:2d), Dict())
 
     problem = Problem(Minimize(objective), constraints)
 
