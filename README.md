@@ -7,7 +7,8 @@
   - a primal-dual interior point method for solving semidefinite programming problems;
   - a minimal interface to model semidefinite programming problems including optional polynomial constraints; 
   - functionality for working with sampled polynomials; and
-  - an implementation of a rounding heuristic which can round the numerical output of the solver to an exact optimal solution over rational or algebraic numbers. 
+  - an implementation of a rounding heuristic which can round the numerical output of the solver to an exact optimal solution over rational or algebraic numbers.
+
 The solver can exploit the low-rank structure of constraint matrices (which arise naturally from enforcing polynomial identities by evaluating both sides at a unisolvent set) but can also work with dense constraint matrices. The solver uses high-precision numerics (using Arblib) and the interface integrates with the Nemo computer algebra system.
 
 ## Installation
