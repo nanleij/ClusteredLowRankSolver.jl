@@ -38,26 +38,23 @@ function basis_laguerre(d::Integer, alpha, x)
 end
 
 """
-    basis_jacobi(d::Integer, alpha, beta, x, normalized = true)
+    basis_jacobi(d::Integer, alpha, beta, x)
 
 Generate the [Jacobi polynomials](https://en.wikipedia.org/wiki/Jacobi_polynomials) with parameters alpha and beta up to degree d (inclusive). 
 """
-function basis_jacobi(d::Integer, alpha, beta, x, normalized = true)
-    q = Vector{typeof(one(alpha) * one(x))}(undef, d + 1)
+function basis_jacobi(d::Integer, alpha, beta, x)
+    q = Vector{typeof(1//2 * one(alpha) * one(x))}(undef, d + 1)
     q[1] = one(x)
     d == 0 && return q
-    q[2] = x # normalized
-    if !normalized
-        q[2] *= (alpha + 1)
-    end
+    q[2] =  (alpha + 1) + (alpha + beta + 2) * 1//2 * (x-1)
     d == 1 && return q
-    for k = 2:d
-        # what if alpha+beta = -n for some integer 1 <= n < 2d ?
-        q[k+1] =
-            (2 * k + alpha + beta - 1) /
-            BigFloat(2k * (k + alpha + beta) * (2k + alpha + beta - 2)) *
-            ((2 * k + alpha + beta) * (2k + alpha + beta - 2) * x + beta^2 - alpha^2) *
-            q[k] + -2 * (k + alpha - 1) * (k + beta - 1) * (2 * k + alpha + beta) * q[k-1]
+    for k=2:d
+        # recurrence formula from https://fa.ewi.tudelft.nl/~koekoek/askey/ch1/par8/par8.html
+        # this gives the same polynomials as the recurrence on wikipedia
+        n = k-1
+        q[k+1] = ((alpha^2 - beta^2)//((2n + alpha + beta)*(2n + alpha + beta + 2)) + x)*q[k] -
+            2 * (n + alpha)*(n + beta)//((2n + alpha + beta)*(2n + alpha + beta + 1))*q[k-1]
+        q[k+1] *= (2n + alpha + beta + 1) * (2n + alpha + beta + 2)//(2*(n + 1)*(n + alpha + beta + 1))
     end
     return q
 end
@@ -65,9 +62,9 @@ end
 """
     basis_chebyshev(d::Int,x)
 
-Generate a basis of [Chebyshev polynomials](https://en.wikipedia.org/wiki/Chebyshev_polynomials) up to degree d (inclusive). 
+Generate a basis of [Chebyshev polynomials](https://en.wikipedia.org/wiki/Chebyshev_polynomials) of the first kind up to degree d (inclusive). 
 """
-function basis_chebyshev(d::Int,x)
+function basis_chebyshev(d::Int, x)
     v = Vector{typeof(one(x))}(undef, 1 + d)
     v[1] = one(x)
     d == 0 && return v
