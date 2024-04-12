@@ -23,7 +23,7 @@ end
 """
     basis_laguerre(d::Integer, alpha, x)
 
-Generate the [Laguerre polynomials](https://en.wikipedia.org/wiki/Laguerre_polynomials) with parameter alpha up to degree d (inclusive). 
+Generate the (generalized) [Laguerre polynomials](https://en.wikipedia.org/wiki/Laguerre_polynomials) with parameter alpha up to degree d (inclusive). 
 """
 function basis_laguerre(d::Integer, alpha, x)
     v = Vector{typeof(one(alpha) * one(x))}(undef, 1 + d)

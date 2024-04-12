@@ -13,10 +13,8 @@ function read_sdpa_sparse_file(filename; T=Float64)
     diag_blocks = [idx for idx in eachindex(blocksizes) if blocksizes[idx] < 0]
     c = [parse(T, x) for x in lines[i]]; i+=1
     @assert length(c) == m
-    blocks = [make_blocks(blocksizes) for j=0:m]
+    blocks = [make_blocks(blocksizes; T=T) for j=0:m]
     for l in lines[i:end]
-        # els = split(l)
-        # @show els
         cidx, bidx,i,j = [parse(Int,x) for x in l[1:end-1]]
         v = parse(T,l[end])
         if bidx in diag_blocks
