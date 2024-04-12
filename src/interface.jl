@@ -898,7 +898,10 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
                     vidx = subblock_keys_dict[l]
                     if highranks[l] 
                         all_blocks = ArbRefMatrix[get(v[vidx][r,s], i, ArbRefMatrix(zeros(subblocksizes[l],subblocksizes[l]),prec=prec)) for r=1:nsubblocks[l] for s=1:nsubblocks[l]]
-                        v[vidx][1,1][i] = hvcat(nsubblocks[l], all_blocks...)
+                        m = hvcat(nsubblocks[l], all_blocks...)
+                        if !iszero(m)
+                            v[vidx][1,1][i] = m
+                        end
                     end
                 end
                 i += 1
