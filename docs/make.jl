@@ -28,8 +28,7 @@ makedocs(plugins=[bib],
         ],
         "api.md",
         "references.md",
-    ],
-    repo = "github.com/nanleij/ClusteredLowRankSolver.jl.git"
+    ]
 )
 
 # Documenter can also automatically deploy documentation to gh-pages.
