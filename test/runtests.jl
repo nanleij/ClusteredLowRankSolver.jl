@@ -81,6 +81,16 @@ using Test
             @test (p2*p1)(5) == p1(5)^2
             @test (p2*p2)(5) == p1(5)^2
         end
+        @testset "substitution" begin
+            # multivariate substitution
+            p1(p2)(1) == 11
+            # univariate substitution
+            R2, x2 = polynomial_ring(QQ, :x)
+            q = x2^2+1
+            Rsampled2 = sampled_polynomial_ring(QQ, collect(0:10))
+            q2 = Rsampled2(q)
+            q(q2)(1) == 11
+        end
     end
 
     @testset "LowRankMat(Pol)" begin
@@ -94,8 +104,16 @@ using Test
     end
 
     @testset "SDPA format" begin
-        problem = sdpa_sparse_to_problem("example.dat-s")
+        problem = sdpa_sparse_to_problem("example.dat-s", T=BigFloat)
+        @test matrixcoeff(objective(problem), 2)[1,1] isa BigFloat
+        @test matrixcoeff(constraints(problem)[2], 2)[1,1] isa BigFloat
         @test matrixcoeff(objective(problem), 2) == [3 0; 0 4]
         @test matrixcoeff(constraints(problem)[2], 2) == [5 2; 2 6]
+    end
+    @testset "checking" begin
+        problem = sdpa_sparse_to_problem("example.dat-s")
+        @test check_problem(problem)
+        sdp = ClusteredLowRankSDP(problem)
+        @test check_sdp!(sdp)
     end
 end
