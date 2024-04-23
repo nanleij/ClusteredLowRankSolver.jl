@@ -85,7 +85,7 @@ function is_empty(A::LowRankMat)
     return length(A.ws) == 0 || length(A.ws[1]) == 0 || all(iszero, A.lambda) || all(x->all(iszero, x), A.ws) || all(x->all(iszero, x), A.vs)
 end
 function is_empty(A::ArbRefMatrix)
-    return size(A) == (0,0) || A == zero(A)
+    return size(A) == (0,0) || iszero(A)
 end
 
 

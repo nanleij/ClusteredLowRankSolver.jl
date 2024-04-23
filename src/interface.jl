@@ -107,7 +107,7 @@ function show(io::IO, R::SampledMPolyRing)
     show(io, p.evaluations)
  end
 
-for S in [QQMPolyRingElem, ZZMPolyRingElem]
+for S in [QQMPolyRingElem, ZZMPolyRingElem, ArbMPolyRingElem]
     function (p::S)(sp::Vararg{SampledMPolyRingElem{T}}) where {T <: RingElem}
         length(sp) == nvars(parent(p)) || ArgumentError("Number of variables does not match number of values")
         @assert all(q.parent == sp[1].parent for q in sp)
@@ -118,23 +118,7 @@ for S in [QQMPolyRingElem, ZZMPolyRingElem]
         return r
     end
 end
-
-function (p::PolyRingElem{T})(sp::SampledMPolyRingElem{T}) where T <: RingElem
-    r = zero(sp)
-    for si in eachindex(parent(sp).samples)
-        r.evaluations[si] = p(sp.evaluations[si])
-    end
-    return r        
-end
-function (p::QQPolyRingElem)(sp::SampledMPolyRingElem{T}) where T <: RingElem
-    r = zero(sp)
-    for si in eachindex(parent(sp).samples)
-        r.evaluations[si] = p(sp.evaluations[si])
-    end
-    return r        
-end
-
-function (p::Generic.MPoly{T})(sp::Vararg{SampledMPolyRingElem{T}}) where T <: RingElement
+function (p::Generic.MPoly{T})(sp::Vararg{SampledMPolyRingElem{T}}) where {T <: RingElem}
     length(sp) == nvars(parent(p)) || ArgumentError("Number of variables does not match number of values")
     @assert all(q.parent == sp[1].parent for q in sp)
     r = zero(sp[1])
@@ -142,6 +126,22 @@ function (p::Generic.MPoly{T})(sp::Vararg{SampledMPolyRingElem{T}}) where T <: R
         r.evaluations[si] = p([q.evaluations[si] for q in sp]...)
     end
     return r
+end
+for S in [QQPolyRingElem, ZZPolyRingElem, ArbPolyRingElem]
+    function (p::S)(sp::SampledMPolyRingElem{T}) where T <: RingElem
+        r = zero(sp)
+        for si in eachindex(parent(sp).samples)
+            r.evaluations[si] = p(sp.evaluations[si])
+        end
+        return r        
+    end
+end
+function (p::Generic.Poly{T})(sp::SampledMPolyRingElem{T}) where T <: RingElem
+    r = zero(sp)
+    for si in eachindex(parent(sp).samples)
+        r.evaluations[si] = p(sp.evaluations[si])
+    end
+    return r        
 end
 
 function evaluate(p::SampledMPolyRingElem, v)
