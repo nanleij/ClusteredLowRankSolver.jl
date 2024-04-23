@@ -107,7 +107,7 @@ function show(io::IO, R::SampledMPolyRing)
     show(io, p.evaluations)
  end
 
-for S in [QQMPolyRingElem, ZZMPolyRingElem, ArbMPolyRingElem]
+for S in [QQMPolyRingElem, ZZMPolyRingElem]
     function (p::S)(sp::Vararg{SampledMPolyRingElem{T}}) where {T <: RingElem}
         length(sp) == nvars(parent(p)) || ArgumentError("Number of variables does not match number of values")
         @assert all(q.parent == sp[1].parent for q in sp)
@@ -127,7 +127,7 @@ function (p::Generic.MPoly{T})(sp::Vararg{SampledMPolyRingElem{T}}) where {T <: 
     end
     return r
 end
-for S in [QQPolyRingElem, ZZPolyRingElem, ArbPolyRingElem]
+for S in [QQPolyRingElem, ZZPolyRingElem]
     function (p::S)(sp::SampledMPolyRingElem{T}) where T <: RingElem
         r = zero(sp)
         for si in eachindex(parent(sp).samples)

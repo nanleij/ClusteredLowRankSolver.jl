@@ -84,12 +84,21 @@ using Test
         @testset "substitution" begin
             # multivariate substitution
             p1(p2)(1) == 11
+            for FF in [QQ, ZZ]
+                R2, x2 = polynomial_ring(FF, [:x])
+                q = x2[1]^2+1
+                Rsampled2 = sampled_polynomial_ring(FF, [[i] for i=0:10])
+                q2 = Rsampled2(q)
+                @test q(q2)(FF(1)) == 5
+            end
             # univariate substitution
-            R2, x2 = polynomial_ring(QQ, :x)
-            q = x2^2+1
-            Rsampled2 = sampled_polynomial_ring(QQ, collect(0:10))
-            q2 = Rsampled2(q)
-            q(q2)(1) == 11
+            for FF in [QQ, ZZ]
+                R2, x2 = polynomial_ring(FF, :x)
+                q = x2^2+1
+                Rsampled2 = sampled_polynomial_ring(FF, collect(0:10))
+                q2 = Rsampled2(q)
+                @test q(q2)(FF(1)) == 5
+            end
         end
     end
 
