@@ -4,11 +4,6 @@
 
 Base.precision(::Nemo.AbstractAlgebra.Floats{BigFloat}) = precision(BigFloat)
 
-evaluate(a::Rational{Int}, x) = a
-
-# Whether this function is needed seems to depend on the version of Nemo
-# Base.Rational{BigInt}(a::QQFieldElem) = BigInt(numerator(a)) // BigInt(denominator(a))
-
 ######################################
 ### Completely sampled polynomials ###
 ######################################
@@ -174,17 +169,35 @@ function Base.:+(q::SampledMPolyRingElem, p::MPolyRingElem)
     p + q
 end
 
+function Base.:+(p::T, q::SampledMPolyRingElem) where {T <: RingElem}
+    parent(q)(p) + q
+end
+function Base.:+(q::SampledMPolyRingElem, p::T) where {T <: RingElem}
+    p + q
+end
+
+
 # subtraction
 function Base.:-(q::SampledMPolyRingElem)
     SampledMPolyRingElem(parent(q),-q.evaluations)
 end
 
-function Base.:-(p::T, q::SampledMPolyRingElem) where T <: Union{SampledMPolyRingElem, MPolyRingElem}
+function Base.:-(p::Union{PolyRingElem, MPolyRingElem}, q::SampledMPolyRingElem) 
+    p + (-q)
+end
+function Base.:-(p::SampledMPolyRingElem, q::SampledMPolyRingElem)
     p + (-q)
 end
 
-function Base.:-(p::SampledMPolyRingElem, q::MPolyRingElem)
+function Base.:-(p::SampledMPolyRingElem, q::Union{PolyRingElem, MPolyRingElem})
     p + (-q)
+end
+
+function Base.:-(p::T, q::SampledMPolyRingElem) where {T <: RingElem}
+    parent(q)(p) - q
+end
+function Base.:-(q::SampledMPolyRingElem, p::T) where {T <: RingElem}
+    (-p) + q
 end
 
 # multiplication
@@ -351,21 +364,21 @@ function Arblib.ArbRefMatrix(m::Vector; prec=precision(BigFloat))
     nm
 end
 
-Nemo.evaluate(p::Int, s) = p
-
 function Nemo.evaluate(p::LowRankMatPol, sample; scaling=1)
-    LowRankMatPol([scaling*evaluate(v, sample) for v in p.lambda],
-               [[evaluate(x, sample) for x in y] for y in p.vs],
-               [[evaluate(x, sample) for x in y] for y in p.ws])
+    LowRankMatPol([scaling*myevaluate(v, sample) for v in p.lambda],
+               [[myevaluate(x, sample) for x in y] for y in p.vs],
+               [[myevaluate(x, sample) for x in y] for y in p.ws])
 end
-
-Nemo.evaluate(x::ZZRingElem, sample)  = x
-
 
 (p::LowRankMatPol)(sample) = evaluate(p, sample)
 
-function Nemo.evaluate(p::Matrix, sample; scaling=1)
-    res = [evaluate(p[i, j], sample) for i=1:size(p, 1), j=1:size(p, 2)]
+myevaluate(x::T, s) where T <: Real = x 
+myevaluate(x::T, s) where T <: RingElem = x 
+myevaluate(x::T, s) where T <: Union{MPolyRingElem, PolyRingElem} = evaluate(x, s)
+myevaluate(x::SampledMPolyRingElem, s) = evaluate(x, s)
+myevaluate(x::LowRankMatPol, s) = evaluate(x, s)
+function myevaluate(p::Matrix, sample; scaling=1)
+    res = [myevaluate(p[i, j], sample) for i=1:size(p, 1), j=1:size(p, 2)]
     scaling * res
 end
 
@@ -1286,7 +1299,7 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Dual
     t = @elapsed begin
         rhs = -slacks(problem, sol) # b - Ax
         if isnothing(monomial_bases)
-            b = [evaluate(rhs[i], s) for i in eachindex(rhs) for s in problem.constraints[i].samples]
+            b = [myevaluate(rhs[i], s) for i in eachindex(rhs) for s in problem.constraints[i].samples]
             b = matrix(FF, length(b), 1, b)
         else
             Rs = [parent(last(m)) for m in monomial_bases]
@@ -1335,7 +1348,7 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Dual
                             if isnothing(monomial_bases)
                                 #evaluate on samples
                                 for sample in constraint.samples
-                                    A[i,j] = 2^(a != b) * evaluate(v, sample)
+                                    A[i,j] = 2^(a != b) * myevaluate(v, sample)
                                     i+=1
                                 end
                             else
@@ -1365,7 +1378,7 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Dual
                         if isnothing(monomial_bases)
                             # sampling
                             for sample in constraint.samples
-                                A[i, j] = evaluate(constraint.freecoeff[f], sample)
+                                A[i, j] = myevaluate(constraint.freecoeff[f], sample)
                                 i += 1
                             end
                         else
@@ -1418,7 +1431,7 @@ function linearsystem(problem::Problem; FF=QQ, verbose = false)
 		    s = mvd[bln]
 		    if haskey(constraint.matrixcoeff, bln)
 		        block = constraint.matrixcoeff[bln]
-		        eb = evaluate(block, sample)
+		        eb = myevaluate(block, sample)
 		        for a=1:s, b=a:s
 		            A[i, j] = FF(eb[a, b])
 			        if a != b
@@ -1436,7 +1449,7 @@ function linearsystem(problem::Problem; FF=QQ, verbose = false)
         for f in free_vars
             if haskey(constraint.freecoeff, f)
                 v = constraint.freecoeff[f]
-                A[i,j] = FF(evaluate(v, sample))
+                A[i,j] = FF(myevaluate(v, sample))
                 j+=1
             else
                 A[i,j] = FF(0)
@@ -1444,7 +1457,7 @@ function linearsystem(problem::Problem; FF=QQ, verbose = false)
             end
         end
 
-		b[i, 1] = FF(evaluate(constraint.constant, sample))
+		b[i, 1] = FF(myevaluate(constraint.constant, sample))
 		i += 1
 	end
 	A, b
@@ -1569,14 +1582,26 @@ using a floating point approximation of a generator g of the field.
 
 Convert rationals and integers to the same numbers in base_ring.
 """
-function generic_embedding(p::Union{QQMPolyRingElem, MPolyRingElem, QQPolyRingElem, PolyRingElem}, g; base_ring = RF)
+function generic_embedding(p::MPolyRingElem, g; base_ring = RF)
     if base_ring == BigFloat
         base_ring = RF
     end
     #convert to polynomial in RealField/ArbField
     R = parent(p)
-    n = length(gens(R))
-    Rnew, x = polynomial_ring(base_ring, n)
+    Rnew, x = polynomial_ring(base_ring, string.(gens(R)))
+    q = MPolyBuildCtx(Rnew)
+    for (c, ev) in zip(coefficients(p), exponent_vectors(p))
+        push_term!(q, generic_embedding(c,g, base_ring=base_ring), ev)
+    end
+    finish(q)
+end
+function generic_embedding(p::PolyRingElem, g; base_ring = RF)
+    if base_ring == BigFloat
+        base_ring = RF
+    end
+    #convert to polynomial in RealField/ArbField
+    R = parent(p)
+    Rnew, x = polynomial_ring(base_ring, string(gens(R)[1]))
     q = MPolyBuildCtx(Rnew)
     for (c, ev) in zip(coefficients(p), exponent_vectors(p))
         push_term!(q, generic_embedding(c,g, base_ring=base_ring), ev)
@@ -1594,7 +1619,9 @@ end
 function generic_embedding(x::AbsSimpleNumFieldElem, g; base_ring=BigFloat)
     # check whether g is indeed a generator of this field
     p = defining_polynomial(parent(x))
-    @assert abs(sum(base_ring(Rational{BigInt}(coeff(p, k))) * g^k for k=0:degree(p))) < 1e-10
+    if base_ring == BigFloat
+        @assert abs(sum(base_ring(Rational{BigInt}(coeff(p, k))) * g^k for k=0:degree(p))) < 1e-10
+    end
     sum(base_ring(Rational{BigInt}(coeff(x,k))) * g^k for k=0:degree(parent(x))-1)
 end
 

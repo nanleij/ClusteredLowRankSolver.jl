@@ -1345,6 +1345,11 @@ function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::Du
             settings::RoundingSettings=RoundingSettings(),
             monomial_bases=nothing,
             verbose=true)
+    problem = map(x->generic_embedding(x, gen(FF); base_ring=FF), problem)
+    if !isnothing(monomial_bases)
+        monomial_bases = [map(x->generic_embedding(x, gen(FF); base_ring=FF), m) for m in monomial_bases]
+        @assert length(monomial_bases) == length(constraints(problem)) "Please supply one monomial basis for every constraint."
+    end
     verbose && println("** Starting computation of basis transformations **")
     # print_memory_info()
     t = @elapsed Bs = basis_transformations(primalsol, dualsol, FF=FF, g=g, settings=settings, verbose=verbose)

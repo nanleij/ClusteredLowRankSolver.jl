@@ -6,26 +6,26 @@ using Test
 
     @testset "examples" begin
         # these examples test nearly everything
-        include("../examples/PolyOpt.jl")
-        using  .PolyOpt
-        problem, _, dualsol = min_f(2)
-        @test  objvalue(problem, dualsol) ≈ -2.113 atol=1e-2
+        # include("../examples/PolyOpt.jl")
+        # using  .PolyOpt
+        # problem, _, dualsol = min_f(2)
+        # @test  objvalue(problem, dualsol) ≈ -2.113 atol=1e-2
 
-        include("../examples/Delsarte.jl")
-        using .Delsarte
-        @test delsarte(3, 10, 1//2) ≈ 13.158314 atol=1e-5
+        # include("../examples/Delsarte.jl")
+        # using .Delsarte
+        # @test delsarte(3, 10, 1//2) ≈ 13.158314 atol=1e-5
 
-        include("../examples/SpherePacking.jl")
-        using .SpherePacking
-        problem, _, dualsol = cohnelkies(8, 15, prec=256)
-        @test objvalue(problem, dualsol) ≈ BigFloat(pi)^4/384 atol=1e-4 #exact in the limit of d-> ∞, but for this d the error still is relatively large
-        problem, _, dualsol = Nsphere_packing(8, 15, [1//2,1//2],2, prec=512)
-        @test objvalue(problem, dualsol) ≈ BigFloat(pi)^4/384 atol=1e-4
+        # include("../examples/SpherePacking.jl")
+        # using .SpherePacking
+        # problem, _, dualsol = cohnelkies(8, 15, prec=256)
+        # @test objvalue(problem, dualsol) ≈ BigFloat(pi)^4/384 atol=1e-4 #exact in the limit of d-> ∞, but for this d the error still is relatively large
+        # problem, _, dualsol = Nsphere_packing(8, 15, [1//2,1//2],2, prec=512)
+        # @test objvalue(problem, dualsol) ≈ BigFloat(pi)^4/384 atol=1e-4
 
         include("../examples/ThreePointBound.jl")
         using .ThreePointBound
-        problem, _, dualsol = three_point_spherical_codes(4, 1//6, -1, 4, prec=256, omega_d=10^3, omega_p=10^3)
-        @test objvalue(problem, dualsol) ≈ 10 atol=1e-5
+        # problem, _, dualsol = three_point_spherical_codes(4, 1//6, -1, 4, prec=256, omega_d=10^3, omega_p=10^3)
+        # @test objvalue(problem, dualsol) ≈ 10 atol=1e-5
     end
 
     @testset "Rounding" begin

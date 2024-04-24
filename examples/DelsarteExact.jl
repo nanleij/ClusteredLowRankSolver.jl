@@ -1,6 +1,6 @@
 module DelsarteExact
 
-using Nemo, ClusteredLowRankSolver
+using AbstractAlgebra, ClusteredLowRankSolver
 
 export delsarte_exact, delsarte_round
 
