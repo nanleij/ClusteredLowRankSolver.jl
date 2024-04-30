@@ -43,6 +43,10 @@ struct SampledMPolyRingElem{T} <: Nemo.RingElem
     evaluations::AbstractVector{T}
 end
 
+function Base.hash(p::SampledMPolyRingElem, x::UInt)
+    hash(p.evaluations, hash(parent(p),x))
+end
+
 ==(p::SampledMPolyRingElem, q::SampledMPolyRingElem) = parent(p) == parent(q) && p.evaluations == q.evaluations
 
 function Base.deepcopy_internal(q::SampledMPolyRingElem, d::IdDict)
