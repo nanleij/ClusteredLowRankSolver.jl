@@ -19,12 +19,12 @@ RowEchelon = "af85af4c-bcd5-5d23-b03a-a909639aa875"
 [compat]
 Arblib = "0.6, 0.7, 0.8"
 BlockDiagonals = "0.1"
+Combinatorics = "1.0"
 GenericLinearAlgebra = "0.2, 0.3"
 IterTools = "1"
 KrylovKit = "0.5, 0.6, 0.7"
-Nemo = "0.43"
+Nemo = "0.43, 0.44"
 RowEchelon = "0.2"
-Combinatorics = "1.0"
 julia = "1"
 
 [extras]
