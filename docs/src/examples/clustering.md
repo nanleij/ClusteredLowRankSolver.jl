@@ -28,10 +28,10 @@ Assuming that the matrix `A` is defined before, as well as the polynomials `g[i]
         push!(constraints, Constraint(0,psd_dict,Dict(), samples))
     end
 ```
-Since the positive semidefinite matrix variable ``Y`` occurs in every constraint, the corresponding cluster contains ``k \cdot |S|`` constraints after sampling, where ``|S|`` is the number of samples. To split this into ``k`` clusters of ``|S|`` constraints, we use the function  [`model_psd_variables_as_free_variables!`](@ref) to model ``Y`` as free variables:
+Since the positive semidefinite matrix variable ``Y`` occurs in every constraint, the corresponding cluster contains ``k \cdot |S|`` constraints after sampling, where ``|S|`` is the number of samples. To split this into ``k`` clusters of ``|S|`` constraints, we use the function  [`model_psd_variables_as_free_variables`](@ref) to model ``Y`` as free variables:
 ```julia
     problem = Problem(Minimize(obj), constraints)
-    model_psd_variables_as_free_variables!(problem, [:Y])
+    problem = model_psd_variables_as_free_variables1(problem, [:Y])
 ```
 This adds auxilliary free variables ``X_{ij}``, adds the constraints ``X_{ij} = Y_{ij}``, and replaces the ``Y_{ij}`` in the constraints by ``X_{ij}``. Then the only positive semidefinite variables in the polynomial constraints are the sums-of-squares matrices, which causes each sums-of-squares constraint to be assigned to its own cluster.
 
