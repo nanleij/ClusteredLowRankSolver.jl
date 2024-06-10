@@ -28,6 +28,16 @@ using Test
         @test objvalue(problem, dualsol) ≈ 10 atol=1e-5
     end
 
+    @testset "modelling" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        oldproblem = Problem(Maximize(obj), [constraint])
+        newproblem = model_psd_variables_as_free_variables(oldproblem, [:z])
+        _,_,dualsol1,_ = solvesdp(oldproblem)
+        _,_,dualsol2,_ = solvesdp(newproblem)
+        @test objvalue(oldproblem, dualsol1) ≈ objvalue(newproblem, dualsol2) atol=1e-10
+    end
+
     @testset "Rounding" begin
         include("../examples/DelsarteExact.jl")
         using .DelsarteExact
@@ -59,6 +69,7 @@ using Test
             success && objexact == 120
         end
     end
+
 
     @testset "SampledMPolyElem" begin #this is mostly tested through the examples too
         R, (x,) = polynomial_ring(RealField, ["x"])

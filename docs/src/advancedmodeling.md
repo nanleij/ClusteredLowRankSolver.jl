@@ -56,9 +56,9 @@ SampledMPolyRingElem
 
 
 ## Clustering
-In the [`ClusteredLowRankSDP`](@ref), the constraints are clustered. That is, two constraints in different clusters do not use the same positive semidefinite matrix variables. Internally, this creates a block structure which can be exploited by the solver. One example where clustering occurs is when sampling multiple polynomial constraints which do not use positive semidefinite variables other than the ones for sum-of-squares characterizations. If other positive semidefinite variables are used, it might be beneficial to use extra free variables in the constraint instead of the positive semidefinite matrix variables, and add constraint to equate these variables to entries of the positive semidefinite matrix variables. This is supported through the function [`model_psd_variables_as_free_variables!`](@ref). See the [example](@ref exClustering) about Clustering. 
+In the [`ClusteredLowRankSDP`](@ref), the constraints are clustered. That is, two constraints in different clusters do not use the same positive semidefinite matrix variables. Internally, this creates a block structure which can be exploited by the solver. One example where clustering occurs is when sampling multiple polynomial constraints which do not use positive semidefinite variables other than the ones for sum-of-squares characterizations. If other positive semidefinite variables are used, it might be beneficial to use extra free variables in the constraint instead of the positive semidefinite matrix variables, and add constraint to equate these variables to entries of the positive semidefinite matrix variables. This is supported through the function [`model_psd_variables_as_free_variables`](@ref). See the [example](@ref exClustering) about Clustering. 
 ```@docs
-model_psd_variables_as_free_variables!
+model_psd_variables_as_free_variables
 ```
 
 

@@ -31,7 +31,7 @@ export generic_embedding, basic_embedding
 export convert_to_prec, SolverFailure
 export check_sdp!, check_problem
 export SampledMPolyRingElem, SampledMPolyRing, sampled_polynomial_ring
-export model_psd_variables_as_free_variables!
+export model_psd_variables_as_free_variables
 
 
 export PrimalSolution, DualSolution, matrixvar, freevar, slacks, matrixvars, freevars

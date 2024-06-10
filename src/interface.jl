@@ -649,7 +649,18 @@ end
 Model the positive semidefinite variables with names in `as_free` using free variables,
  and add extra constraints to set them equal to auxilliary positive semidefinite variables.
 """
-function model_psd_variables_as_free_variables!(problem::Problem, as_free)
+function model_psd_variables_as_free_variables(problem::Problem, as_free)
+    # get general dicts
+    cons = Constraint[]
+    for c in constraints(problem)
+        psd = deepcopy(matrixcoeffs(c))
+        free = Dict{Any, Any}(k=>v for (k,v) in freecoeffs(c))
+        push!(cons, Constraint(c.constant, psd, free, c.samples, c.scalings))
+    end
+    o = objective(problem)
+    psd = Dict{Union{Block, keytype(matrixcoeffs(o))}, Union{Matrix, eltype(matrixcoeffs(o))}}(k=>v for (k,v) in matrixcoeffs(o))
+    obj = Objective(o.constant, psd, deepcopy(freecoeffs(o)))
+
     for l in as_free
         #For each constraint, for each Block b with l==b.l, we need to
         #   1) add the entries of the LowRankMatPol to the freecoeff dict with key b,i,j
@@ -658,7 +669,7 @@ function model_psd_variables_as_free_variables!(problem::Problem, as_free)
         #   1) add a new constraint equating the free variable with the entry of the block
         m = 0
         n = 0
-        for constraint in problem.constraints
+        for constraint in cons
             for block in collect(keys(constraint.matrixcoeff))
                 if name(block) == l #we do this l now
                     if n == 0
@@ -678,8 +689,8 @@ function model_psd_variables_as_free_variables!(problem::Problem, as_free)
                         elseif r > s #the other case is r < s, but because it is symmetric we do that now too. (hence the factor 2)
                             constraint.freecoeff[(l,(r-1)*n+i,(s-1)*n+j)] = 2 * constraint.matrixcoeff[block][i,j]
                         end
+                        m = max(r,s,m)
                     end
-                    m = max(r,s,m)
                     delete!(constraint.matrixcoeff,block)
                 end
             end
@@ -691,7 +702,7 @@ function model_psd_variables_as_free_variables!(problem::Problem, as_free)
         for i=1:n*m
             for j=1:i
                 if i==j
-                    push!(problem.constraints,Constraint(0,
+                    push!(cons,Constraint(0,
                         Dict(Block(l,i,j)=> hcat([1])), # matrix variable
                         Dict((l,i,j)=>-1), # free variable
                         ))
@@ -700,7 +711,7 @@ function model_psd_variables_as_free_variables!(problem::Problem, as_free)
                     #     Dict(Block(l,i,j) => LowRankMatPol([1],[[1]]), Block(l,j,i) => LowRankMatPol([1],[[1]])),
                     #     Dict((l,i,j)=>-2),
                     # ))
-                    push!(problem.constraints,Constraint(0,
+                    push!(cons,Constraint(0,
                         Dict(Block(l,i,j) => hcat([1]), Block(l,j,i) => hcat([1])),
                         Dict((l,i,j)=>-2),
                     ))
@@ -715,28 +726,29 @@ function model_psd_variables_as_free_variables!(problem::Problem, as_free)
         # 3) set both to 1/2 * objective
         #This is an implementation of (1)
         new_blocks = Dict() #because we delete the blocks afterwards, so we need to store the new blocks separately and put them in the objective afterwards
-        for block in collect(keys(problem.objective.matrixcoeff)) # now this is not modified during the loop
+        for block in collect(keys(obj.matrixcoeff)) # now this is not modified during the loop
             r,s = subblock(block)
             if name(block) == l && r >= s # we only do the lower half, and we make it symmetric
                 for i=1:n
-                    for j=1:(r == block.s ? i : n)
+                    for j=1:(r == s ? i : n)
                         if (r-1)*n+i == (s-1)*n + j # on the diagonal
-                            new_blocks[Block(l, (r-1)*n+i, (s-1)*n+j)] = hcat(problem.objective.matrixcoeff[block][i,j])
+                            new_blocks[Block(l, (r-1)*n+i, (s-1)*n+j)] = hcat(obj.matrixcoeff[block][i,j])
                         else #not on the diagonal of the full matrix, so we need to take both sides into account
-                            new_blocks[Block(l, (r-1)*n+i, (s-1)*n+j)] = hcat(problem.objective.matrixcoeff[block][i,j])
-                            new_blocks[Block(l, (s-1)*n+j, (r-1)*n+i)] = hcat(problem.objective.matrixcoeff[block][i,j])
+                            new_blocks[Block(l, (r-1)*n+i, (s-1)*n+j)] = hcat(obj.matrixcoeff[block][i,j])
+                            new_blocks[Block(l, (s-1)*n+j, (r-1)*n+i)] = hcat(obj.matrixcoeff[block][i,j])
                         end
                     end
                 end
             end
             if name(block) == l
-                delete!(problem.objective.matrixcoeff,block)
+                delete!(obj.matrixcoeff,block)
             end
-        end
+        end        
         for (block, value) in new_blocks
-            problem.objective.matrixcoeff[block] = value
+            obj.matrixcoeff[block] = value
         end
     end
+    Problem(problem.maximize, obj, cons)
 end
 
 
