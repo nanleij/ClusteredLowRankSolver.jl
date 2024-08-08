@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Symmetric polynomial optimization · ClusteredLowRankSolver.jl Documentation</title><meta name="title" content="Symmetric polynomial optimization · ClusteredLowRankSolver.jl Documentation"/><meta property="og:title" content="Symmetric polynomial optimization · ClusteredLowRankSolver.jl Documentation"/><meta property="twitter:title" content="Symmetric polynomial optimization · ClusteredLowRankSolver.jl Documentation"/><meta name="description" content="Documentation for ClusteredLowRankSolver.jl Documentation."/><meta property="og:description" content="Documentation for ClusteredLowRankSolver.jl Documentation."/><meta property="twitter:description" content="Documentation for ClusteredLowRankSolver.jl Documentation."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">ClusteredLowRankSolver.jl Documentation</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../tutorial/">Tutorial</a></li><li><a class="tocitem" href="../../advancedmodeling/">Advanced modeling</a></li><li><a class="tocitem" href="../../solving/">Solving</a></li><li><a class="tocitem" href="../../rounding/">Rounding</a></li><li><a class="tocitem" href="../../sdpa/">SDPA-sparse format</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../delsarte/">Delsarte LP bound</a></li><li><a class="tocitem" href="../sphere_packing/">Sphere packing</a></li><li class="is-active"><a class="tocitem" href>Symmetric polynomial optimization</a></li><li><a class="tocitem" href="../clustering/">Clustering</a></li><li><a class="tocitem" href="../rounding/">Rounding the Delsarte LP bound</a></li></ul></li><li><a class="tocitem" href="../../api/">API reference</a></li><li><a class="tocitem" href="../../references/">References and citing</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Symmetric polynomial optimization</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Symmetric polynomial optimization</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/nanleij/ClusteredLowRankSolver.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/nanleij/ClusteredLowRankSolver.jl/blob/main/docs/src/examples/poly_opt.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="expolyopt"><a class="docs-heading-anchor" href="#expolyopt">Example: Multivariate polynomial optimization using symmetry reduction</a><a id="expolyopt-1"></a><a class="docs-heading-anchor-permalink" href="#expolyopt" title="Permalink"></a></h1><p>In this example, we consider minimizing a multivariate polynomial with <span>$S_3$</span> symmetries. The example is inspirated by example 7.1 from [<a href="../../references/#gatermann-symmetry-2004">7</a>]. See the <a href="https://github.com/nanleij/ClusteredLowRankSolver.jl/tree/main/examples">Examples</a> folder for the file with the code. We consider the polynomial</p><p class="math-container">\[f(x,y,z) = x^4 + y^4 + z^4 - 4xyz + x + y + z\]</p><p>for which we want to find the minimum value <span>$f_{min} = \min_{x,y,z} f(x,y,z)$</span>. Relaxing the problem with a sum-of-squares constraint gives</p><p class="math-container">\[\begin{aligned}
+    \max \quad&amp; M &amp;\\
+    \text{s.t.} \quad&amp; f - M &amp;\text{is a sum-of-squares,}
+\end{aligned}\]</p><p>Since the polynomial <span>$f$</span> is invariant under permuting the variables (i.e., the group action of <span>$S_3$</span>), it is natural to consider only invariant sum-of-squares polynomials. From [<a href="../../references/#gatermann-symmetry-2004">7</a>], we know that any sum-of-squares polynomial invariant under the action of <span>$S_3$</span> can be written as</p><p class="math-container">\[    \langle Y_1, ww^{\sf T} \rangle + \langle Y_2, \Pi_2 \otimes ww^{\sf T} \rangle + \langle Y_3, \Pi_3 \otimes ww^{\sf T} \rangle\]</p><p>where <span>$w(x,y,z)$</span> is a vector of basis polynomials of the invariant ring <span>$\R[x,y,z]^{S_3} = \R[x+y+z, xy+yz+xz, xyz]$</span>, and where <span>$\Pi_2(x,y,z) = ((x-y)(y-z)(z-x))^2$</span>. The matrix <span>$\Pi_3$</span> is of rank 2 and has the decomposition <span>$v_1 v_1^{\sf T} + v_2 v_2^{\sf T}$</span> with</p><p class="math-container">\[v_1 = \frac{1}{\sqrt{2}}\begin{pmatrix}
+    2x-y-z \\
+    2yz-zx-xy
+\end{pmatrix} \quad \text{ and } \quad v_2 = \sqrt{\frac{3}{2}}\begin{pmatrix}
+    y-z \\
+    zx-xy
+\end{pmatrix}\]</p><p>Since we consider sum-of-squares polynomials of a certain degree <span>$d$</span>, we restrict to the elements of the matrices <span>$\Pi_i \otimes ww^{\sf T}$</span> with degree at most <span>$\lfloor d/2 \rfloor$</span>.</p><p>To sample this constraint we need a three-variate minimal unisolvent set for invariant polynomials of degree at most <span>$d$</span>. In this case, one such example are the representatives of the orbits of <span>$S_3$</span> of the rational points in the simplex with denominator <span>$d$</span>, since these points are invariant under <span>$S_3$</span> and are minimal unisolvent (see [<a href="../../references/#de-laat-clustered-2022">2</a>]). However, if the polynomial space is more complicated it is unclear what a minimal unisolvent set is. To show one approach on this we instead make a grid of points which unisolvent but not minimal, and we use the approach of [<a href="../../references/#de-laat-clustered-2022">2</a>] through <code>approximatefekete</code> to choose a good subset of these points and a corresponding good basis for <span>$w$</span>.</p><p>As for the example of the Delsarte bound, the objective is simply one free variable <span>$M$</span> with coefficient <span>$1$</span>. We also create a function to generate an invariant basis with variables <span>$x,y,z$</span>.</p><pre><code class="language-julia hljs">using ClusteredLowRankSolver, AbstractAlgebra
+
+function invariant_basis(x,y,z, d)
+    # create a vector with a precise type
+    v = [(x*y*z)^0]
+    for deg=1:d, j=0:div(deg,3), i=0:div(deg-3j,2)
+        # monomials in the invariant elementary polynomials
+        # ordered by degree
+        push!(v, (x+y+z)^(deg-2i-3j) * (x*y+y*z+z*x)^i * (x*y*z)^j)
+    end
+    return v
+end
+
+function min_f(d)
+
+    obj = Objective(0, Dict(), Dict(:M =&gt; 1))</code></pre><p>In this case, we need a three-variate polynomial ring, and a basis of invariant polynomials. We also use <code>approximatefekete</code> to find a subset of the sample points with a good basis.</p><pre><code class="language-julia hljs">    FF = RealField
+    R, (x,y,z) = polynomial_ring(FF, [:x, :y, :z])
+    # The polynomial f:
+    f =  x^4 + y^4 + z^4 - 4x*y*z + x + y + z
+
+    # An invariant basis up to degree d:
+    basis = invariant_basis(x, y, z, 2d)
+    # For the sum-of-squares polynomials we have to
+    # select elements of the basis based on the degree
+    degrees = [total_degree(p) for p in basis]
+
+    # generate samples and a good basis
+    cheb_points = [vcat(sample_points_chebyshev(2d+k)...) for k=0:2]
+    samples_grid = [[cheb_points[1][i+1], cheb_points[2][j+1], cheb_points[3][k+1]]
+        for i=0:2d for j=0:2d+1 for k=0:2d+2]
+    basis, samples = approximatefekete(basis, samples_grid)</code></pre><p>Now we will construct the constraint matrices corresponding to the sum-of-squares parts. Although <code>approximatefekete</code> returns a polynomial basis only characterized by the evaluations on the sample points, basic operations on normal polynomials will also work with sampled polynomials.</p><pre><code class="language-julia hljs">    psd_dict = Dict()
+
+    equivariants = [[[R(1)]], [[(x-y)*(y-z)*(z-x)]], [[(2x-y-z), (2y*z-x*z-x*y)], [(y-z), (x*z-x*y)]]]
+    # The squares of the prefactors, in case we want to define the program over QQ
+    factors = [[1], [1], [1//2, 3//2]]
+    for eqi in eachindex(equivariants)
+        vecs = []
+        for r in eachindex(equivariants[eqi])
+            vec = []
+            for eq in equivariants[eqi][r], (q, qdeg) in zip(basis, degrees)
+                # only add terms for which the diagonal entry is of degree &lt;=2d
+                if 2total_degree(eq) + 2qdeg &lt;= 2d
+                    push!(vec, eq * q)
+                end
+            end
+            if length(vec) &gt; 0
+                push!(vecs, vec)
+            end
+        end
+        # only add variables for the non-empty matrices
+        if length(vecs) &gt; 0
+            psd_dict[(:trivariatesos, eqi)] = LowRankMatPol(factors[eqi], vecs)
+        end
+    end</code></pre><p>Now we can formulate the constraint and solve the problem:</p><pre><code class="language-julia hljs">    # the constraint is SOS + M = f
+    constr = Constraint(f, psd_dict, Dict(:M =&gt; 1), samples)
+    problem = Problem(Maximize(obj), [constr])
+
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
+    return objvalue(problem, dualsol)
+end
+
+min_f(2)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">-2.112913881423605414427512782614691020693825631225366474860600292985589062813402</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sphere_packing/">« Sphere packing</a><a class="docs-footer-nextpage" href="../clustering/">Clustering »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.5.0 on <span class="colophon-date" title="Thursday 8 August 2024 13:19">Thursday 8 August 2024</span>. Using Julia version 1.10.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
