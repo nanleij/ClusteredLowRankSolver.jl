@@ -1298,7 +1298,7 @@ function get_rational_system(problem::Problem, dualsol::DualSolution, FF::AbsSim
     x = vectorize(dualsol)
 
     verbose && print("  Computing an approximate solution in the extension field...")
-    t = @elapsed x_rounded = roundx(A, b, x, g, degree(FF), regularization=settings.regularization, prec=Int64(precision(first(x))))
+    t = @elapsed x_rounded = roundx(A, b, x, g, degree(FF), regularization=settings.regularization, prec=Int64(precision(first(x))), power=settings.approximation_decimals)
     verbose && println(" ($(t)s)")
     # convert to error vector and smaller system
     b -= A*matrix(QQ, length(x_rounded), 1, x_rounded)
