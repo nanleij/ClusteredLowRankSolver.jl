@@ -38,6 +38,17 @@ using Test
         @test objvalue(oldproblem, dualsol1) ≈ objvalue(newproblem, dualsol2) atol=1e-10
     end
 
+    @testset "warnings" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        c2 = Constraint(1, Dict(:z=>LowRankMatPol([1],[[1]])), Dict())
+        c3 = Constraint(1, Dict(Block(:z2)=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint, c2])
+        problem2 = Problem(Maximize(obj), [constraint, c3])
+        @test_logs (:warn, "Please use LowRankMatPol consistently for the constraint matrices corresponding to the variable z. Converting to normal matrices.") ClusteredLowRankSDP(problem)
+        @test_logs (:warn, "Please use Block consistently. Solutions with Block(z2) will be returned.") ClusteredLowRankSDP(problem2)
+    end
+
     @testset "Rounding" begin
         include("../examples/DelsarteExact.jl")
         using .DelsarteExact

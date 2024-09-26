@@ -250,9 +250,9 @@ function Nemo.add!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}, r::Sa
         p.evaluations[i] = q.evaluations[i] + r.evaluations[i]
     end
     return p
- end
+end
 
- function Nemo.addeq!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}) where T
+function Nemo.addeq!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}) where T
     parent(p) == parent(q) || error("Incompatible rings")
     for i in eachindex(p.evaluations)
         p.evaluations[i] += q.evaluations[i]
@@ -910,9 +910,13 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
                 r,s = subblock(block)
                 subblocksizes[name(block)] = max(size(constraint.matrixcoeff[block], 1),get(subblocksizes,name(block),0))
                 nsubblocks[name(block)] = max(r, s, get(nsubblocks, name(block), 0))
-                highranks[name(block)] = get(highranks, name(block), false) || typeof(constraint.matrixcoeff[block]) != LowRankMatPol
+                ishighrank = typeof(constraint.matrixcoeff[block]) != LowRankMatPol
+                if haskey(highranks, name(block)) && highranks[name(block)] != ishighrank 
+                    @warn "Please use LowRankMatPol consistently for the constraint matrices corresponding to the variable $(name(block)). Converting to normal matrices."
+                end
+                highranks[name(block)] = get(highranks, name(block), false) || ishighrank
                 if haskey(subblockBlock, name(block)) && subblockBlock[name(block)] != (block isa Block) 
-                    println("Please use Block consistently. Solutions with Block($(name(block))) will be returned.")
+                    @warn "Please use Block consistently. Solutions with Block($(name(block))) will be returned."
                     subblockBlock[name(block)] = true
                 else
                     subblockBlock[name(block)] = (block isa Block)
@@ -934,6 +938,9 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
                     r, s = subblock(block)
                     v[subblock_keys_dict[name(block)]][r,s][i] = sampleevaluate(constraint.matrixcoeff[block], sample,scaling = constraint.scalings[idx],prec=prec)
                     # We can set the s,r block here to the transpose of the r,s block. Or to 1/2 * the transpose if we would want that.
+                    if highranks[name(block)] && typeof(constraint.matrixcoeff[block]) == LowRankMatPol
+                        v[subblock_keys_dict[name(block)]][r,s][i] = ArbRefMatrix(Matrix(v[subblock_keys_dict[name(block)]][r,s][i]))
+                    end
                 end
                 for l in keys(highranks)
                     vidx = subblock_keys_dict[l]
