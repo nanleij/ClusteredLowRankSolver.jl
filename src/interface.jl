@@ -252,14 +252,6 @@ function Nemo.add!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}, r::Sa
     return p
 end
 
-function Nemo.addeq!(p::SampledMPolyRingElem{T}, q::SampledMPolyRingElem{T}) where T
-    parent(p) == parent(q) || error("Incompatible rings")
-    for i in eachindex(p.evaluations)
-        p.evaluations[i] += q.evaluations[i]
-    end
-    return p
- end
-
 """
     approximatefekete(basis, samples; base_ring=BigFloat) -> basis, samples
 
@@ -839,8 +831,14 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     # clusters will be a vector of vectors containing block labels (so name(block))
     #NOTE: if a constraint doesn't have PSD variables, this creates an empty cluster.
     clusters = Vector{Any}[]
+    emptyconstraints = Int[]
     for constraintindex in eachindex(sos.constraints)
-        constraint = sos.constraints[constraintindex]
+        constraint = sos.constraints[constraintindex]     
+        if length(matrixcoeffs(constraint)) == 0 && length(freecoeffs(constraint)) == 0 & constraint.constant == 0
+            push!(emptyconstraints, constraintindex)
+            continue
+        end      
+        @assert length(matrixcoeffs(constraint)) != 0 "Each constraint should contain positive semidefinite matrix variables, which is not the case for constraint $(constraintindex)."
         clusterset = Set{Int}()
         for k in keys(constraint.matrixcoeff)
             for i in eachindex(clusters)
@@ -870,6 +868,8 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     cluster_constraint_index = [Int[] for _ in clusters]
     remaining = Int[]
     for constraintindex in eachindex(sos.constraints)
+        constraintindex in emptyconstraints && continue
+
         constraint = sos.constraints[constraintindex]
         k = first(keys(constraint.matrixcoeff))
         found_cluster = false
@@ -969,7 +969,7 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
         for block in keys(sos.objective.matrixcoeff)
             if name(block) in clusters[clusterindex]
                 r, s = subblock(block)
-                M[subblock_keys_dict[name(block)]][r, s] = ArbRefMatrix(sos.objective.matrixcoeff[block], prec=prec)
+                M[subblock_keys_dict[name(block)]][r, s] = ArbRefMatrix(Matrix(sos.objective.matrixcoeff[block]), prec=prec)
             end
         end
         push!(C, [ArbRefMatrix(hvcat(size(S,2), [S[r,s] for r=1:size(S,1) for s=1:size(S,2)]...),prec=prec) for S in M])

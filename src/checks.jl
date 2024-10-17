@@ -61,21 +61,34 @@ function istranspose(A,B; eps=1e-10)
     return true
 end
 
-function remove_empty_mats!(sdp::ClusteredLowRankSDP)
-    removed = []
+function remove_empty_mats!(sdp::ClusteredLowRankSDP, verbose=true)
+    toberemoved = [[] for j in eachindex(sdp.A)]
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
+            isempty = false
             for r=1:size(sdp.A[j][l],1)
                 for s=1:r
                     for p in keys(sdp.A[j][l][r,s])
                         if is_empty(sdp.A[j][l][r,s][p])
-                            @info "The coefficient for the PSD variable $(sdp.matrix_coeff_names[j][l]) has an empty decomposition in a constraint, so we remove it from that constraint."
+                            isempty = true
                             delete!(sdp.A[j][l][r,s], p)
                         end
                     end
                 end
             end
+            verbose && isempty && @info "The coefficient for the PSD variable $(sdp.matrix_coeff_names[j][l]) has an empty decomposition in a constraint, so we remove it from that constraint."
+            if all(length(sdp.A[j][l][r,s]) == 0 for r=1:size(sdp.A[j][l],1) for s=1:r)
+                @info "The matrix variable $(sdp.matrix_coeff_names[j][l]) is not used in any constraint and will be removed."
+                push!(toberemoved[j], l)
+            end
         end
+    end
+    for j in eachindex(sdp.A)
+        length(toberemoved[j]) == 0 && continue
+        deleteat!(sdp.matrix_coeff_names[j], toberemoved[j])
+        deleteat!(sdp.matrix_coeff_blocks[j], toberemoved[j])
+        deleteat!(sdp.A[j], toberemoved[j])
+        deleteat!(sdp.C.blocks[j].blocks, toberemoved[j]) 
     end
 end
 """
@@ -104,10 +117,10 @@ check_mat(A::AbstractMatrix) = size(A,1) == size(A,2)
 
 Check whether the constraint matrices are symmetric, and remove empty constraint matrices.
 """
-function check_sdp!(sdp::ClusteredLowRankSDP)
+function check_sdp!(sdp::ClusteredLowRankSDP, verbose=true)
     #perform all checks on the SDP
     everythingokay = issymmetric(sdp)
-    remove_empty_mats!(sdp)
+    remove_empty_mats!(sdp, verbose)
     return everythingokay
 end
 

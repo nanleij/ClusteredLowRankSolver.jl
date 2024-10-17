@@ -15,8 +15,8 @@ function read_sdpa_sparse_file(filename; T=Float64)
     @assert length(c) == m
     blocks = [make_blocks(blocksizes; T=T) for j=0:m]
     for l in lines[i:end]
-        cidx, bidx,i,j = [parse(Int,x) for x in l[1:end-1]]
-        v = parse(T,l[end])
+        cidx, bidx,i,j = [parse(Int,x) for x in l[1:4]]
+        v = parse(T,l[5])
         if bidx in diag_blocks
             @assert i == j
             blocks[cidx+1][bidx][i][1,1] = v
@@ -66,7 +66,19 @@ function sdpa_sparse_to_problem(filename, obj_shift=0; T=Float64)
     end
     obj = Objective(obj_shift,dicts[1],Dict())
 
-    cons = [Constraint(c[i], dicts[i+1], Dict()) for i in eachindex(c)]
+    # Checking for and removing empty constraints
+    removing = Int[]
+    for i in eachindex(c)
+        if length(dicts[i+1]) == 0 
+            push!(removing, i)
+            if c[i] != 0
+                @warn "Constraint without constraint matrices but with nonzero constant found. Removing the constraint."
+            else
+                @info "Empty constraint found and removed."
+            end
+        end
+    end
+    cons = [Constraint(c[i], dicts[i+1], Dict()) for i in eachindex(c) if !(i in removing)]
     Problem(Maximize(obj), cons)
 end
 

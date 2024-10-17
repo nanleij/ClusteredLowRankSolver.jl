@@ -4,7 +4,7 @@ using Test
 
 @testset "ClusteredLowRankSolver.jl" begin
 
-    @testset "examples" begin
+    @testset "Emptyxamples" begin
         # these examples test nearly everything
         include("../examples/PolyOpt.jl")
         using  .PolyOpt
@@ -28,7 +28,7 @@ using Test
         @test objvalue(problem, dualsol) ≈ 10 atol=1e-5
     end
 
-    @testset "modelling" begin
+    @testset "Modelling" begin
         obj = Objective(0, Dict(:z=> hcat([1])), Dict())
         constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
         oldproblem = Problem(Maximize(obj), [constraint])
@@ -38,7 +38,7 @@ using Test
         @test objvalue(oldproblem, dualsol1) ≈ objvalue(newproblem, dualsol2) atol=1e-10
     end
 
-    @testset "warnings" begin
+    @testset "Warnings" begin
         obj = Objective(0, Dict(:z=> hcat([1])), Dict())
         constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
         c2 = Constraint(1, Dict(:z=>LowRankMatPol([1],[[1]])), Dict())
@@ -141,8 +141,15 @@ using Test
         @test matrixcoeff(objective(problem), 2) == [3 0; 0 4]
         @test matrixcoeff(constraints(problem)[2], 2) == [5 2; 2 6]
     end
-    @testset "checking" begin
+    @testset "Checking" begin
         problem = sdpa_sparse_to_problem("example.dat-s")
+        @test check_problem(problem)
+        sdp = ClusteredLowRankSDP(problem)
+        @test check_sdp!(sdp)
+
+        c = Constraint(0, Dict(1=>zeros(1,1), 2=>ones(1,1)), Dict())
+        o = Objective(0, Dict(2=>ones(1,1)), Dict())
+        problem = Problem(Maximize(o), [c])
         @test check_problem(problem)
         sdp = ClusteredLowRankSDP(problem)
         @test check_sdp!(sdp)

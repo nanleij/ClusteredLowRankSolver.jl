@@ -1,8 +1,8 @@
 "A sample problem.  
-2 =mdim
+3 =mdim : extra constraint to check removing empty constraints
 2 =nblocks
 2 2
-10.0 20.0
+10.0 20.0 0.0
 0 1 1 1 1.0
 0 1 2 2 2.0
 0 2 1 1 3.0
