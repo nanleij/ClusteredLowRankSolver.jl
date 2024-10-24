@@ -293,11 +293,12 @@ function solvesdp(
             dual_error_threshold,
             need_primal_feasible,
             need_dual_feasible,
-            correctoronly
+            correctoronly,
+            verbose
         )
     )
         if iter > maxiterations
-            println("The maximum number of iterations has been reached.")
+            verbose && println("The maximum number of iterations has been reached.")
             error_code[1] = 2
             break
         end
@@ -311,7 +312,7 @@ function solvesdp(
 		end
 
         if mu > max_complementary_gap
-            println("The maximum complementary gap has been exceeded (mu = $mu).")
+            verbose && println("The maximum complementary gap has been exceeded (mu = $mu).")
             error_code[1] = 3
             break
         end
@@ -405,8 +406,8 @@ function solvesdp(
         # if the precision is not high enough, or if there are other problems, the step lengths might be extremely low (e.g. 10^-8 or lower)
         if min(BigFloat(alpha_d),BigFloat(alpha_p)) < step_length_threshold
             min_step = min(Float64(alpha_d),Float64(alpha_p))
-            println("The step length (", min_step, ") was too short, possible reasons include precision issues and infeasible problems.")
-            println("Another reason might be that the current solution is in a difficult area. In that case you can try decreasing the parameter `step_length_threshold` and/or `gamma`.")
+            verbose && println("The step length (", min_step, ") was too short, possible reasons include precision issues and infeasible problems.")
+            verbose && println("Another reason might be that the current solution is in a difficult area. In that case you can try decreasing the parameter `step_length_threshold` and/or `gamma`.")
             error_code[1] = 4
             break
         else
@@ -796,7 +797,8 @@ function terminate(duality_gap,
     	dual_error_threshold,
     	need_primal_feasible,
     	need_dual_feasible,
-    	correctoronly)
+    	correctoronly,
+        verbose)
     #NOTE: We might also need termination criteria for when the problem is infeasible. e.g. a too large primal/dual objective
     # We convert to BigFloats to avoid unexpected results due to large error bounds.
     # This is (probably) only important when increasing the precision during the solving, or not at all
@@ -804,15 +806,15 @@ function terminate(duality_gap,
     primal_feas = BigFloat(primal_error) < BigFloat(primal_error_threshold)
     dual_feas = BigFloat(dual_error) < BigFloat(dual_error_threshold)
     if need_primal_feasible && primal_feas
-        println("Primal feasible solution found")
+        verbose && println("Primal feasible solution found")
         return true
     end
     if need_dual_feasible && dual_feas
-        println("Dual feasible solution found")
+        verbose && println("Dual feasible solution found")
         return true
     end
     if !correctoronly && primal_feas && dual_feas && duality_gap_opt
-        println("Optimal solution found")
+        verbose && println("Optimal solution found")
         return true
     end
     return false

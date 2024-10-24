@@ -68,4 +68,6 @@ include("basesandsamples.jl")
 
 include("SDPAtoCLRS.jl")
 
+include("precompile.jl")
+
 end
