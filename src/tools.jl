@@ -8,7 +8,7 @@
 # extending LinearAlgebra.dot for the BlockDiagonal matrices and Arb(Ref)Matrices.
 # In principle dot(A,B) is also (mathematically) defined if they have different block sizes, and can be done more efficient than materalizing the matrices.
 # But in that case it is far more difficult to implement, so we just give the normal matrix results then
-function LinearAlgebra.dot(A::BlockDiagonal, B::BlockDiagonal)
+function LinearAlgebra.dot(A::BlockDiagonal{T, AbstractMatrix{T}}, B::BlockDiagonal{T, AbstractMatrix{T}}) where T
     # tot = Arb(prec=precision(A))
     # for (a,b) in zip(blocks(A),blocks(B))
     #     Arblib.add!(tot,tot,dot(a,b))

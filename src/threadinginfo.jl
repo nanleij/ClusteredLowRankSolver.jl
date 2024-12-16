@@ -1,14 +1,14 @@
 """
 Distribute the weights over n (about) equal-sized bins by swapping between bins with high total weight and low total weight.
 """
-function distribute_weights_swapping(weights,n;nswaps = min(length(weights)^2,100))
+function distribute_weights_swapping(weights::Vector{Int},n::Int;nswaps::Int = min(length(weights)^2,100))
     # we first 'normally' distribute the weights (first k to first thread, second k to second thread etc.)
     # Then we try to improve it a number of times by swapping weights between sets with a high and low total weight
     step = div(length(weights),n)+1 # first number of sets have this size, second part has this size-1
     nstep = n-(step*n-length(weights)) # this is the number of sets with size 'step'
     sets = vcat([collect((i-1)*step+1:i*step) for i=1:nstep],
             [collect(nstep*step+(i-1)*(step-1)+1:nstep*step+i*(step-1)) for i=1:n-nstep])
-    set_weights = [sum(weights[sets[i]]) for i=1:length(sets)] #the total weights
+    set_weights = [sum(weights[sets[i]]) for i in eachindex(sets)] #the total weights
 
     # edge case: less than 1 weight for every core
     if length(weights) <= n || n == 1
@@ -19,7 +19,7 @@ function distribute_weights_swapping(weights,n;nswaps = min(length(weights)^2,10
     index_el = 1
     for k=1:nswaps # nswaps is actually not the number of swaps, but the number of tries
         # The current (large) set and the current element of the set
-        max_set = sort([(set_weights[i],i) for i=1:length(set_weights)],rev=true)[index_set][2]
+        max_set = sort([(set_weights[i],i) for i in eachindex(set_weights)],rev=true)[index_set][2]
         max_el = sets[max_set][sort([(weights[sets[max_set]][i],i) for i=1:length(weights[sets[max_set]])],rev=true)[index_el][2]]
         # The small set and the small element of the set
         min_set = argmin(set_weights)
@@ -89,7 +89,7 @@ function ThreadingInfo(sdp::ClusteredLowRankSDP,n=Threads.nthreads())
     setsjl, weightsjl, weight_distjl = distribute_weights_swapping(jl_pair_weights, n)
     # to get these sets on the cores, we need to put the longer sets first
     sort!(setsjl, by=length, rev=true)
-    jl_order = jl_order[vcat(setsjl...)]
+    jl_order = jl_order[reduce(vcat,setsjl)]
 
     # Determine a good order for the clusters j:
     # We base the weights for the clusters on the Cholesky decomposition.
@@ -97,6 +97,6 @@ function ThreadingInfo(sdp::ClusteredLowRankSDP,n=Threads.nthreads())
     j_order_weights = [size(sdp.c[j],1)^3 for j in eachindex(sdp.c)] # [1//2 * size(sdp.c[j],1)^2*size(sdp.b,1) + 1//3 * size(sdp.c[j].1)^3 for j in eachindex(sdp.c)]
     setsj, weightsj, weight_distj = distribute_weights_swapping(j_order_weights, n)
     sort!(setsj, by=length, rev=true)
-    j_order = vcat(setsj...)
+    j_order = reduce(vcat, setsj)
     return ThreadingInfo(j_order,jl_order)
 end

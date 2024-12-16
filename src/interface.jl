@@ -344,7 +344,7 @@ end
 #     end
 # end
 
-function Arblib.ArbRefMatrix(m::Matrix; prec=precision(BigFloat))
+function Arblib.ArbRefMatrix(m::Matrix{T}; prec=precision(BigFloat)) where T
     nm = ArbRefMatrix(size(m, 1), size(m, 2), prec=prec)
     for i = 1:size(m, 1), j = 1:size(m, 2)
         nm[i, j] = Arb(m[i, j], prec=prec)
@@ -352,7 +352,7 @@ function Arblib.ArbRefMatrix(m::Matrix; prec=precision(BigFloat))
     nm
 end
 
-function Arblib.ArbRefMatrix(m::Vector; prec=precision(BigFloat))
+function Arblib.ArbRefMatrix(m::Vector{T}; prec=precision(BigFloat)) where T
     nm = ArbRefMatrix(length(m), 1, prec=prec)
     for i in eachindex(m)
         nm[i, 1] = Arb(m[i], prec=prec)
@@ -458,7 +458,7 @@ end
 function name(b::Block)
     return b.l
 end
-name(b) = b
+name(b::T) where T = b
 function subblock(b::Block)
     return (b.r, b.s)
 end
@@ -826,7 +826,7 @@ Keyword arguments:
   - `verbose` (default: false): print progress to the standard output
 """
 function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=false)
-    verbose && println("Forming the clusters...")
+    verbose ? println("Forming the clusters...") : nothing
 
     # clusters will be a vector of vectors containing block labels (so name(block))
     #NOTE: if a constraint doesn't have PSD variables, this creates an empty cluster.
@@ -834,7 +834,7 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     emptyconstraints = Int[]
     for constraintindex in eachindex(sos.constraints)
         constraint = sos.constraints[constraintindex]     
-        if length(matrixcoeffs(constraint)) == 0 && length(freecoeffs(constraint)) == 0 & constraint.constant == 0
+        if length(matrixcoeffs(constraint)) == 0 && length(freecoeffs(constraint)) == 0 && iszero(constraint.constant)
             push!(emptyconstraints, constraintindex)
             continue
         end      
@@ -896,14 +896,14 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     end
     A = []
     C = []
-    matrix_coeff_blocks = []
+    matrix_coeff_blocks = Vector{Tuple{Bool, Int}}[]
     matrix_coeff_names = []
     for clusterindex in eachindex(cluster_constraint_index)
         constraintindices = cluster_constraint_index[clusterindex]
         nsubblocks = Dict{Any,Int}()
         subblocksizes = Dict{Any,Int}()
         highranks = Dict{Any, Bool}()
-        subblockBlock = Dict()
+        subblockBlock = Dict{Any, Bool}()
         for constraintindex in constraintindices
             constraint = sos.constraints[constraintindex]
             for block in keys(constraint.matrixcoeff)
@@ -925,7 +925,7 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
         end
         v = [[Dict{Int,Union{LowRankMat, ArbRefMatrix}}() for _=1:m, _=1:m] for (k, m) in nsubblocks]
 		subblock_keys = collect(keys(nsubblocks)) #fix an order
-        subblock_keys_dict = Dict(k=>i for (i,k) in enumerate(subblock_keys))
+        subblock_keys_dict = Dict{Any, Int}(k=>i for (i,k) in enumerate(subblock_keys))
         push!(matrix_coeff_blocks, [(subblockBlock[k], nsubblocks[k]) for k in subblock_keys])
 
         i = 1

@@ -210,9 +210,9 @@ function solvesdp(
             end 
             delta = div(size(Y.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
             for r=1:size(sdp.A[j][l],1), s=1:size(sdp.A[j][l],2)
-                cur_right = ArbRefMatrix(hcat([sdp.A[j][l][r,s][p].vs[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].vs)]...), prec=prec)
+                cur_right = ArbRefMatrix(reduce(hcat, [sdp.A[j][l][r,s][p].vs[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].vs)]), prec=prec)
                 Arblib.get_mid!(cur_right,cur_right)
-                cur_left = ArbRefMatrix(hcat([sdp.A[j][l][r,s][p].ws[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].ws)]...), prec=prec)
+                cur_left = ArbRefMatrix(reduce(hcat, [sdp.A[j][l][r,s][p].ws[i] for p in keys(sdp.A[j][l][r,s]) for i=1:length(sdp.A[j][l][r,s][p].ws)]), prec=prec)
                 Arblib.get_mid!(cur_left,cur_left)
                 if size(cur_left,1) == 0
                     vecs_left[j][l][r,s] = ArbRefMatrix(delta,0,prec=prec)
@@ -669,7 +669,7 @@ function compute_primal_objective(sdp, x)
 end
 
 """Compute the dual objective <C,Y> + <b,y> + constant"""
-function compute_dual_objective(sdp,y, Y)
+function compute_dual_objective(sdp, y, Y)
     return dot(sdp.C, Y) + dot(sdp.b, y) + sdp.constant
 end
 

@@ -527,7 +527,7 @@ function roundx(x, g, deg; bits=100, errbound = 1e-15)
         # a = lindep(u, bits)
         a = clindep(reshape(start_vec, deg+1,1), bits, errbound)
         for d=1:deg
-            push!(finalvecs[d], -FlintQQ(a[d+1] // FlintQQ(a[1])))
+            push!(finalvecs[d], -QQ(a[d+1] // QQ(a[1])))
         end
     end
     vcat(finalvecs...)
@@ -650,14 +650,14 @@ function detecteigenvectors(block::Matrix{T}, bits::Int=10^3, errbound=1e-15; FF
     if size(block) == (1,1) && abs(block[1,1]) <= 0.000001
         list = [[1]]
     elseif size(m, 2) > 0
-        A = FlintZZ.([0 for i=1:1, j=1:size(m,1)])
+        A = ZZ.([0 for i=1:1, j=1:size(m,1)])
         s = collect(1:size(m,1))
         while !isempty(s)
             # l is such that transpose(m[s,:]) * l is close to zero
             l = clindep(m[s,:], bits, errbound)
             # we have an equation for every power of the generator
             if deg == 1
-                new_row = zeros(FlintZZ, size(m,1))
+                new_row = zeros(ZZ, size(m,1))
                 for (idx,val) in zip(s,l)
                     new_row[idx] = val
                 end
@@ -672,7 +672,7 @@ function detecteigenvectors(block::Matrix{T}, bits::Int=10^3, errbound=1e-15; FF
                 for r in eachrow(AQQ)
                     lcm_row = lcm(denominator.(r))
                     r = ZZ.(lcm_row .* r)
-                    new_row = zeros(FlintZZ, size(m,1))
+                    new_row = zeros(ZZ, size(m,1))
                     for (idx,val) in enumerate(r)
                         new_row[idx] = val
                     end
