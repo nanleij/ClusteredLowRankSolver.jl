@@ -364,10 +364,10 @@ function solve_system_pseudoinverse(A,b)
 end
 
 # g is an approximation of the real root that is used as generator
-function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=true,  FF=QQ, g=1)
+function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=true,  FF=QQ, g=1, verbose=true)
     success = true
     if check_slacks
-        print("Checking whether slacks are zero...")
+        verbose && print("Checking whether slacks are zero...")
         t = @elapsed begin
             s = slacks(problem, sol)
             for i in eachindex(s)
@@ -377,16 +377,16 @@ function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=tru
                 end
             end
         end
-        print_memory_info()
+        # print_memory_info()
         if success
-            print(" done")
+            verbose && print(" done")
         else
-            print(" fail")
+            verbose && print(" fail")
         end
-        println(" ($t)")
+        verbose && println(" ($t)")
     end
 
-    println("Checking sdp constraints")
+    verbose && println("Checking sdp constraints")
     # use Arb cholesky to check whether the matrices are positive definite
     t = @elapsed begin
         R, x = polynomial_ring(FF, "x")
@@ -405,11 +405,11 @@ function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=tru
         end
     end
     if success
-        print(" done")
+        verbose && print(" done")
     else
-        print(" fail")
+        verbose && print(" fail")
     end
-    println(" ($t)")
+    verbose && println(" ($t)")
     # print_memory_info()
     success
 end
@@ -640,7 +640,7 @@ function detecteigenvectors(block::Matrix{T}, bits::Int=10^3, errbound=1e-15; FF
     FtoQ_exact = hcat([g_exact^k .* Matrix(I, size(M,1), size(M,1)) for k=0:deg-1]...)
     M = vcat([g^k * M for k=0:deg-1]...)
 
-    list = Vector{fmpz}[]
+    list = Vector{ZZRingElem}[]
     i = findfirst(x->abs(x)<1e-20, V[:])
     if i == nothing
         return list
@@ -915,7 +915,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
                     # and applying LLL
                     lcms = []
                     for i=1:nrows(reduced_kernelvecs)
-                        push!(lcms,lcm(Matrix(denominator.(reduced_kernelvecs[i, :]))))
+                        push!(lcms,lcm(denominator.(reduced_kernelvecs[i, :])))
                         reduced_kernelvecs[i, :] *= lcms[end]
                     end
                     reduced_kernelvecs = lll(ZZ.(reduced_kernelvecs))
@@ -1001,7 +1001,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         B = matrix(FF, B)
     elseif find_extra_vectors
         # find_extra_vectors is true, so all the current vectors should be kernel vectors
-        maxerror = maximum(maximum(abs.(dm * Matrix{BigFloat}(B[:, i]))) for i=1:ncols(B))
+        maxerror = maximum(maximum(abs.(dm * BigFloat.(B[:, i]))) for i=1:ncols(B))
         @assert maxerror < settings.kernel_errbound "The reduced kernel vectors are not kernel vectors (maximum error = $maxerror)"
         # find remaining basis vectors
         # convert kernel vectors to floats for numerical linear independence testing
@@ -1011,17 +1011,17 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         # orthogonalize the kernel vectors
         for i in eachindex(nlist)
             for j=1:i-1
-                nlist[i] -= (dot(nlist[i], nlist[j])// dot(nlist[j], nlist[j])) * nlist[j]
+                nlist[i] -= (dot(nlist[i], nlist[j])// dot(nlist[j], nlist[j])) .* nlist[j]
             end
         end
         # complete the basis
         extravectors = zero_matrix(FF, N, N-ncols(B))
         j = 1 # we are looking for the j'th extra vector
         for i = 1:N
-            candidate = zero_matrix(AF, N, 1)
+            candidate = zeros(AF, N)
             candidate[i, 1] = AF(1)
             for v in nlist
-                candidate -= (dot(candidate, v) // dot(v, v)) * v
+                candidate -= (dot(candidate, v) // dot(v, v)) .* v
             end
             if dot(candidate, candidate) > 1e-40
                 push!(nlist, candidate)
@@ -1037,7 +1037,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         # we want the first bunch of vectors to be the kernel vectors;
         # by default they are at the end
         B = hcat(B[:, end-kernel_dim+1:end], B[:, 1:end-kernel_dim])
-        maxerror = maximum(maximum(abs.(dm * Vector{BigFloat}(B[:, i]))) for i=1:kernel_dim)
+        maxerror = maximum(maximum(abs.(dm * BigFloat.(B[:, i]))) for i=1:kernel_dim)
         @assert maxerror < settings.kernel_errbound "The reduced kernel vectors are not kernel vectors (maximum error = $maxerror)"
     end
     verbose && settings.reduce_kernelvectors && println("    After reduction, the maximum number of the basis transformation matrix is $final_maxnum")
@@ -1333,6 +1333,11 @@ function print_memory_info()
     println("Total memory usage: $(mem/factor) $s")
 end
 
+#TODO: extra argument: known kernel vectors. This would
+# 1) allow for the use of lower precision solutions if all kernel vectors are known
+# 2) reduce the time needed for the step of finding all kernel vectors, since presumably a bunch of the computations can be skipped
+# For problems in extremal geometry, many of the kernel vectors come from one or multiple configurations, and this can then be easily automated.
+# We probably need this to round the exact solution for the 12-point codes in S^3, or we need more precision (60-80 bits instead of 40)
 """
     exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::DualSolution; transformed=false, FF = QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing)
 
@@ -1345,17 +1350,18 @@ function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::Du
             settings::RoundingSettings=RoundingSettings(),
             monomial_bases=nothing,
             verbose=true)
-    problem = map(x->generic_embedding(x, gen(FF); base_ring=FF), problem)
-    if !isnothing(monomial_bases)
-        monomial_bases = [map(x->generic_embedding(x, gen(FF); base_ring=FF), m) for m in monomial_bases]
-        @assert length(monomial_bases) == length(constraints(problem)) "Please supply one monomial basis for every constraint."
-    end
     verbose && println("** Starting computation of basis transformations **")
     # print_memory_info()
     t = @elapsed Bs = basis_transformations(primalsol, dualsol, FF=FF, g=g, settings=settings, verbose=verbose)
     verbose && println("** Finished computation of basis transformations ($(t)s) **")
     # print_memory_info()
     verbose && print("** Transforming the problem and the solution **")
+    problem = map(x->generic_embedding(x, gen(FF); base_ring=FF), problem)
+    if !isnothing(monomial_bases)
+        monomial_bases = [map(x->generic_embedding(x, gen(FF); base_ring=FF), m) for m in monomial_bases]
+        @assert length(monomial_bases) == length(constraints(problem)) "Please supply one monomial basis for every constraint."
+        length.(monomial_bases) != [length(x.samples) for x in constraints(problem)] && @warn "Some constraints have a different number of basis polynomials than samples."
+    end
     # verbose && print("Transforming dualsol... ")
     t = @elapsed transformed_dualsol = transform(dualsol,Bs, g=g)
     # verbose && println("done ($(t)s)")
@@ -1373,7 +1379,7 @@ function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::Du
     else
         verbose && println("The slacks are satisfied (checked or ensured by solving the system)")
     end
-    success = is_valid_solution(transformed_problem, exact_sol, FF=FF, g=g, check_slacks=false)
+    success = is_valid_solution(transformed_problem, exact_sol, FF=FF, g=g, check_slacks=false, verbose=verbose)
     success = success && correct_slacks
     final_transform = Dict(k=>transpose(Binv)[:, s+1:end] for (k, (Bt,Binv,s)) in Bs)
     if transformed

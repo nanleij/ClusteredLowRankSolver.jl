@@ -34,12 +34,12 @@ function delsarte_exact(n, d, costheta; FF=QQ, g=1, eps=1e-40, kwargs...)
     return objvalue(problem, dualsol), problem, primalsol, dualsol
 end
 
-function delsarte_round(n, d, costheta; eps=1e-40, prec=512)
+function delsarte_round(n, d, costheta; eps=1e-40, prec=512, settings=RoundingSettings())
     obj, problem, primalsol, dualsol = delsarte_exact(n, d, costheta; eps=eps, prec=prec)
     # use monomial basis
     R, x = polynomial_ring(QQ, :x)
     b = [x^k for k=0:2d]
-    success, exactdualsol = exact_solution(problem, primalsol, dualsol, monomial_bases=[b])
+    success, exactdualsol = exact_solution(problem, primalsol, dualsol, monomial_bases=[b], settings=settings)
     return success, problem, exactdualsol
 end
 
