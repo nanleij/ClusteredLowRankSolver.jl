@@ -8,7 +8,7 @@
 """
 Check whether all matrices used in the semidefinite program are symmetric
 """
-function issymmetric(sdp::ClusteredLowRankSDP;eps=1e-10)
+function LinearAlgebra.issymmetric(sdp::ClusteredLowRankSDP;eps=1e-10)
     issym = true
     for j in eachindex(sdp.A)
         for l in eachindex(sdp.A[j])
@@ -36,7 +36,7 @@ function issymmetric(sdp::ClusteredLowRankSDP;eps=1e-10)
 
     return issym
 end
-function issymmetric(A::Union{ArbRefMatrix, LowRankMat}; eps=1e-10)
+function LinearAlgebra.issymmetric(A::Union{ArbRefMatrix, LowRankMat}; eps=1e-10)
     n = size(A,1)
     @assert size(A,2) == n
     for i=1:n

@@ -498,6 +498,14 @@ struct Constraint
     freecoeff::Dict
     samples::Vector
     scalings::Vector
+    function Constraint(constant, matrixcoeff, freecoeff, samples, scalings)
+        for (k,m) in matrixcoeff
+            if !(m isa LowRankMatPol) && !issymmetric(m)
+                matrixcoeff[k] = 1//2 *  (m + transpose(m))
+            end
+        end
+        new(constant, matrixcoeff, freecoeff, samples, scalings)
+    end
 end
 
 Constraint(constant, matrixcoeff, freecoeff, samples) = Constraint(constant, matrixcoeff, freecoeff, samples, [1 for s in samples])
@@ -948,7 +956,13 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
                         all_blocks = ArbRefMatrix[get(v[vidx][r,s], i, ArbRefMatrix(zeros(subblocksizes[l],subblocksizes[l]),prec=prec)) for r=1:nsubblocks[l] for s=1:nsubblocks[l]]
                         m = hvcat(nsubblocks[l], all_blocks...)
                         if !iszero(m)
-                            v[vidx][1,1][i] = m
+                            if !issymmetric(m)
+                                Arblib.add!(m, m, transpose(m))
+                                Arblib.div!(m, m, 2)
+                                v[vidx][1,1][i] = m
+                            else
+                                v[vidx][1,1][i] = m
+                            end
                         end
                     end
                 end
@@ -972,10 +986,22 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
                 M[subblock_keys_dict[name(block)]][r, s] = ArbRefMatrix(Matrix(sos.objective.matrixcoeff[block]), prec=prec)
             end
         end
-        push!(C, [ArbRefMatrix(hvcat(size(S,2), [S[r,s] for r=1:size(S,1) for s=1:size(S,2)]...),prec=prec) for S in M])
+        C_cluster = ArbRefMatrix[]
+        for S in M
+            m = ArbRefMatrix(hvcat(size(S,2), [S[r,s] for r=1:size(S,1) for s=1:size(S,2)]...),prec=prec)
+            if !issymmetric(m)
+                Arblib.add!(m, m, transpose(m))
+                Arblib.div!(m, m, 2)
+                push!(C_cluster, m)
+            else
+                push!(C_cluster, m)
+            end
+        end
+        push!(C, C_cluster)
+        # push!(C, [ArbRefMatrix(hvcat(size(S,2), [S[r,s] for r=1:size(S,1) for s=1:size(S,2)]...),prec=prec) for S in M])
         push!(matrix_coeff_names, subblock_keys)
     end
-    C_block = BlockDiagonal([BlockDiagonal([b for b in blocks]) for blocks in C])
+    C_block = BlockDiagonal([BlockDiagonal(blocks) for blocks in C])
 
     verbose && println("Sampling the coefficients of the free variables...")
 
@@ -1648,7 +1674,15 @@ function generic_embedding(x::AbsSimpleNumFieldElem, g; base_ring=BigFloat)
     sum(base_ring(Rational{BigInt}(coeff(x,k))) * g^k for k=0:degree(parent(x))-1)
 end
 
-function generic_embedding(x::Union{QQFieldElem, ZZRingElem, T}, g; base_ring=BigFloat) where T <: Number
+function generic_embedding(x::Union{QQFieldElem, ZZRingElem, Rational{Integer}, Integer}, g; base_ring=BigFloat)
     # this is only relevant with exact problems, so numbers are either AbsSimpleNumFieldElem, or rational/int
     base_ring(Rational{BigInt}(x))
+end
+function generic_embedding(x::T, g; base_ring::Union{QQField, Rational{Integer}, AbsSimpleNumField}) where T <: AbstractFloat
+    # this is only relevant when trying to get an exact problem from an approximate problem
+    if base_ring isa AbsSimpleNumField
+        to_field(x, base_ring, g)
+    else
+        base_ring(rationalize(x))
+    end
 end

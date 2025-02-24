@@ -14,7 +14,7 @@ using Random #for randomly choosing columns in the rounding procedure
 using RowEchelon #for detecting kernel vectors in rounding.jl
 
 # import AbstractAlgebra
-import LinearAlgebra: dot, transpose
+import LinearAlgebra: dot, transpose, issymmetric
 import Base: ==
 import Nemo: evaluate
 

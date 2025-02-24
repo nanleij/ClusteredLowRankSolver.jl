@@ -1422,7 +1422,7 @@ function Base.:*(x::AbsSimpleNumFieldElem, y::QQMPolyRingElem)
         push_term!(P, x * FF(c), ev)
         # y2 += x * FF(c) * prod(z .^ ev)
     end
-    return finish!(P)
+    return finish(P)
 end
 
 

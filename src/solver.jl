@@ -33,6 +33,7 @@ Keyword arguments:
   - `step_length_threshold` (default: `10^-7`): the minimum step length allowed
   - `primalsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
   - `dualsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
+  - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is primal and dual feasible
 """
 function solvesdp(
     problem::Problem;
@@ -83,6 +84,7 @@ function solvesdp(
     step_length_threshold=1e-7, # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
     primalsol::Union{Nothing,PrimalSolution}=nothing,
     dualsol::Union{Nothing,DualSolution}=nothing,
+    safe_step::Bool=true,
     correctoronly=false,
     #experimental & testing:
     matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
@@ -396,8 +398,8 @@ function solvesdp(
         # step 7: compute the step lengths
         allocs[5] += @allocated begin
             time_alpha = @elapsed begin
-                alpha_p = compute_step_length(X, dX, gamma, tempX, threadinginfo)
-                alpha_d = compute_step_length(Y, dY, gamma, tempX, threadinginfo)
+                alpha_p = compute_step_length(X, dX, gamma, tempX, pd_feas && !safe_step, threadinginfo)
+                alpha_d = compute_step_length(Y, dY, gamma, tempX, pd_feas && !safe_step, threadinginfo)
             end
         end
 
@@ -414,7 +416,7 @@ function solvesdp(
             # The steplengths are long enough, so we update the variables.
             # if the current solution is primal ánd dual feasible, we follow the search direction exactly.
             # (this follows the code for SDPB)
-            if pd_feas
+            if pd_feas && safe_step
                 alpha_p = min(alpha_p, alpha_d)
                 alpha_d = alpha_p
             end
@@ -1489,6 +1491,7 @@ function compute_step_length(
     dM::BlockDiagonal,
     gamma,
     tempX,
+    unsafe_step,
     threadinginfo,
 )
     # M+ α dM is PSD iff I + α L^-1 dM L^-T is PSD iff α < - 1/eigmin(L^-1 dM L^-T).
@@ -1522,7 +1525,7 @@ function compute_step_length(
             # @show [Float64.(x) for x in tempX]
             #because we can usually use floating point numbers for this, we use a julia implementation of the Lanczos method in KrylovKit
             #TODO: extra check that the converged eigenvalue/vector pair is also converged in high precision?
-            values, vecs, info = eigsolve(Float64.(tempX[2].blocks[j].blocks[l]), 1, :SR; krylovdim = 10, maxiter = min(100,size(tempX[2].blocks[j].blocks[l],1)),tol=10^-5, issymmetric=true, eager=true)
+            values, vecs, info = eigsolve(Float64.(tempX[2].blocks[j].blocks[l]), 1, :SR; krylovdim = 10, maxiter = min(100,size(tempX[2].blocks[j].blocks[l],1)),tol=10^-5, issymmetric=true, eager=true, verbosity=0)
 
             if info.converged >= 1
                 min_eig_arb[j][l] = AL.Arb(values[1],prec=prec) - 10^-5 #tolerance, so this surely is smaller than the minimum eigenvector
@@ -1551,8 +1554,7 @@ function compute_step_length(
     # println(eigs)
     min_eig = minimum(eigs)
 
-
-    if min_eig > -gamma # 1 is the maximum step length
+    if min_eig > -gamma && !unsafe_step # 1 is the maximum step length
         return AL.Arb(1, prec = prec)
     else
         return AL.Arb(-gamma / min_eig, prec = prec)
