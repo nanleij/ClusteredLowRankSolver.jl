@@ -1674,11 +1674,11 @@ function generic_embedding(x::AbsSimpleNumFieldElem, g; base_ring=BigFloat)
     sum(base_ring(Rational{BigInt}(coeff(x,k))) * g^k for k=0:degree(parent(x))-1)
 end
 
-function generic_embedding(x::Union{QQFieldElem, ZZRingElem, Rational{Integer}, Integer}, g; base_ring=BigFloat)
+function generic_embedding(x::Union{QQFieldElem, ZZRingElem, Rational{<:Integer}, Integer}, g; base_ring=BigFloat)
     # this is only relevant with exact problems, so numbers are either AbsSimpleNumFieldElem, or rational/int
     base_ring(Rational{BigInt}(x))
 end
-function generic_embedding(x::T, g; base_ring::Union{QQField, Rational{Integer}, AbsSimpleNumField}) where T <: AbstractFloat
+function generic_embedding(x::T, g; base_ring::Union{QQField, Rational{<:Integer}, AbsSimpleNumField}) where T <: AbstractFloat
     # this is only relevant when trying to get an exact problem from an approximate problem
     if base_ring isa AbsSimpleNumField
         to_field(x, base_ring, g)
