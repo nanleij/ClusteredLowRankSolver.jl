@@ -1180,6 +1180,10 @@ function transform(p::Matrix{T}, Binv, s;g=1) where T
     Binv[s+1:end, :]*p*transpose(Binv)[:, s+1:end]
 end
 
+function transform(p::MatrixElem, Binv, s;g=1)
+    transform(Matrix(p), Binv, s, g=g)
+end
+
 """
     transform(problem, Bs)
 

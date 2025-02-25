@@ -1,7 +1,7 @@
 name = "ClusteredLowRankSolver"
 uuid = "cadeb640-247c-4e6d-a8b8-270aef5e1f95"
 authors = ["nanleij <38724800+nanleij@users.noreply.github.com> and contributors"]
-version = "1.0.14"
+version = "1.0.15"
 
 [deps]
 Arblib = "fb37089c-8514-4489-9461-98f9c8763369"

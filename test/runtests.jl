@@ -83,9 +83,15 @@ using Test
         @test begin
             n, d, costheta = (8, 3, 1//2)
             obj, problem, primalsol, dualsol = delsarte_exact(n, d, costheta; prec=512)
-            # use monomial basis
-            R, x = polynomial_ring(QQ, :x)
+            
+            # for using a monomial basis
+            R, x = polynomial_ring(Nemo.AbstractAlgebra.QQ, :x)
             b = [x^k for k=0:2d]
+
+            # test if everything works with Nemo matrices (MatrixElem)
+            for k=0:2d
+                problem.constraints[1].matrixcoeff[k] = matrix(R, problem.constraints[1].matrixcoeff[k])
+            end
             all_success=true
             for k in Iterators.product([[true,false] for i=1:7]...)
                 for s=[2, 100]
@@ -100,6 +106,8 @@ using Test
                         reduce_kernelvectors_cutoff=s,
                         reduce_kernelvectors_stepsize=s == 2 ? 1 : 100)
                     success, exactdualsol = exact_solution(problem, primalsol, dualsol, monomial_bases=[b], settings=settings, verbose=false)
+                    success, exactdualsol = exact_solution(problem, primalsol, dualsol, settings=settings, verbose=false)
+
                     # success, problem, exactdualsol = delsarte_round(8, 3, 1//2, settings=settings)
                     all_success = all_success && success && objvalue(problem, exactdualsol) == 240     
                 end
