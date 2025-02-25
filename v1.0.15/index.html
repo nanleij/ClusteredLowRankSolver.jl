@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Home · ClusteredLowRankSolver.jl Documentation</title><meta name="title" content="Home · ClusteredLowRankSolver.jl Documentation"/><meta property="og:title" content="Home · ClusteredLowRankSolver.jl Documentation"/><meta property="twitter:title" content="Home · ClusteredLowRankSolver.jl Documentation"/><meta name="description" content="Documentation for ClusteredLowRankSolver.jl Documentation."/><meta property="og:description" content="Documentation for ClusteredLowRankSolver.jl Documentation."/><meta property="twitter:description" content="Documentation for ClusteredLowRankSolver.jl Documentation."/><script data-outdated-warner src="assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="assets/documenter.js"></script><script src="search_index.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href>ClusteredLowRankSolver.jl Documentation</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li class="is-active"><a class="tocitem" href>Home</a><ul class="internal"><li><a class="tocitem" href="#Installation"><span>Installation</span></a></li><li><a class="tocitem" href="#Examples"><span>Examples</span></a></li></ul></li><li><a class="tocitem" href="tutorial/">Tutorial</a></li><li><a class="tocitem" href="advancedmodeling/">Advanced modeling</a></li><li><a class="tocitem" href="solving/">Solving</a></li><li><a class="tocitem" href="rounding/">Rounding</a></li><li><a class="tocitem" href="sdpa/">SDPA-sparse format</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="examples/delsarte/">Delsarte LP bound</a></li><li><a class="tocitem" href="examples/sphere_packing/">Sphere packing</a></li><li><a class="tocitem" href="examples/poly_opt/">Symmetric polynomial optimization</a></li><li><a class="tocitem" href="examples/clustering/">Clustering</a></li><li><a class="tocitem" href="examples/rounding/">Rounding the Delsarte LP bound</a></li></ul></li><li><a class="tocitem" href="api/">API reference</a></li><li><a class="tocitem" href="references/">References and citing</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Home</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Home</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/nanleij/ClusteredLowRankSolver.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/nanleij/ClusteredLowRankSolver.jl/blob/main/docs/src/index.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="ClusteredLowRankSolver.jl"><a class="docs-heading-anchor" href="#ClusteredLowRankSolver.jl">ClusteredLowRankSolver.jl</a><a id="ClusteredLowRankSolver.jl-1"></a><a class="docs-heading-anchor-permalink" href="#ClusteredLowRankSolver.jl" title="Permalink"></a></h1><p><a href="https://github.com/nanleij/ClusteredLowRankSolver.jl"><code>ClusteredLowRankSolver.jl</code></a> implements </p><ul><li>a primal-dual interior point method for solving semidefinite programming problems;</li><li>a minimal interface to model semidefinite programming problems with (optional) polynomial equality constraints; </li><li>functionality for working with sampled polynomials; and</li><li>an implementation of a rounding heuristic which can round the numerical output of the solver to an exact optimal solution over rational or algebraic numbers. </li></ul><p>The solver can exploit the low-rank structure of constraint matrices (which arise naturally from enforcing polynomial identities by evaluating both sides at a unisolvent set) but can also work with dense constraint matrices. The solver uses arb for high-precision numerics and the interface integrates with the Nemo computer algebra system.</p><h2 id="Installation"><a class="docs-heading-anchor" href="#Installation">Installation</a><a id="Installation-1"></a><a class="docs-heading-anchor-permalink" href="#Installation" title="Permalink"></a></h2><p>The solver is written in Julia, and has been registered as a Julia package. Typing <code>using ClusteredLowRankSolver</code> in the REPL will prompt installation if the package has not been installed yet.</p><h2 id="Examples"><a class="docs-heading-anchor" href="#Examples">Examples</a><a id="Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Examples" title="Permalink"></a></h2><p>Here we give two small examples to showcase the interface. For more explanation on the interface, see the <a href="tutorial/#Tutorial">Tutorial</a>. </p><h3 id="Example-1:-The-Goemans-Williamson-MAX-CUT-relaxation"><a class="docs-heading-anchor" href="#Example-1:-The-Goemans-Williamson-MAX-CUT-relaxation">Example 1: The Goemans-Williamson MAX-CUT relaxation</a><a id="Example-1:-The-Goemans-Williamson-MAX-CUT-relaxation-1"></a><a class="docs-heading-anchor-permalink" href="#Example-1:-The-Goemans-Williamson-MAX-CUT-relaxation" title="Permalink"></a></h3><p>Given a Laplacian <code>L</code> of a graph with <code>n</code> vertices, the semidefinite programming relaxation of the max-cut problem reads</p><p class="math-container">\[\begin{aligned}
+&amp; \text{maximize} &amp; &amp; \left\langle \frac{1}{4}L, X \right\rangle\\
+&amp; \text{subject to} &amp; &amp; \langle E_{ii}, X \rangle = 1, \; i=1,\ldots,n,\\
+&amp;&amp;&amp;X \in S_+^{n}.
+\end{aligned}\]</p><p>where <span>$E_{ii}$</span> is the matrix with a one in the <span>$(i,i)$</span> entry, and zeros elsewhere. Here <span>$\langle \cdot, \cdot \rangle$</span> denotes the trace inner product.</p><p>The following code implements this using <code>ClusteredLowRankSolver</code>.</p><pre><code class="language-julia hljs">using ClusteredLowRankSolver
+
+function goemans_williamson(L::Matrix; eps=1e-40)
+    n = size(L, 1)
+
+    # Construct the objective
+    obj = Objective(0, Dict(:X =&gt; 1//4 * L), Dict())
+
+    # Construct the constraints
+    constraints = []
+    for i = 1:n
+        M = zeros(Rational{BigInt}, n, n)
+        M[i, i] = 1//1
+        # the first argument is the right hand side
+        push!(constraints, Constraint(1, Dict(:X =&gt; M), Dict()))
+    end
+
+    # Construct the problem: Maximize the objective s.t. the constraints hold
+    problem = Problem(Maximize(obj), constraints)
+
+    # Solve the problem
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem, duality_gap_threshold=eps)
+
+    objvalue(problem, dualsol), matrixvar(dualsol, :X)
+end</code></pre><p>For a three-cycle, this gives</p><pre><code class="language-julia hljs">L = [2 -1 -1; -1 2 -1; -1 -1 2]
+obj, X = goemans_williamson(L)
+obj</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">2.249999999999999999999999999999999999999972231248843827090045748014468638545871</code></pre><h3 id="Example-2:-Finding-the-global-minimum-of-a-univariate-polynomial"><a class="docs-heading-anchor" href="#Example-2:-Finding-the-global-minimum-of-a-univariate-polynomial">Example 2: Finding the global minimum of a univariate polynomial</a><a id="Example-2:-Finding-the-global-minimum-of-a-univariate-polynomial-1"></a><a class="docs-heading-anchor-permalink" href="#Example-2:-Finding-the-global-minimum-of-a-univariate-polynomial" title="Permalink"></a></h3><p>To find the minimum of a polynomial <span>$f$</span> of degree <span>$2d$</span>, one can use the following problem</p><p class="math-container">\[\begin{aligned}
+&amp; \text{maximize} &amp; &amp; \lambda\\
+&amp; \text{subject to} &amp; &amp; f - \lambda = s,\\
+\end{aligned}\]</p><p>where <span>$s$</span> is a sum-of-squares polynomial of degree <span>$2d$</span>. Let <span>$m$</span> be a vector whose entries form a basis of the polynomials up to degree <span>$d$</span>, then we can write <span>$s = \langle m(x)m(x)^T, X \rangle$</span>, where <span>$X$</span> is a positive semidefinite matrix.</p><pre><code class="language-julia hljs">using ClusteredLowRankSolver, Nemo
+
+function polyopt(f, d)
+    # Set up the polynomial ring
+    P = parent(f)
+    u = gen(P)
+
+    # Compute the polynomial basis and the samples
+    sosbasis = basis_chebyshev(d, u)
+    samples = sample_points_chebyshev(2d, -1, 1)
+
+    # Construct the constraint SOS + lambda = f
+    c = Dict()
+    c[:X] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    constraint = Constraint(f, c, Dict(:lambda =&gt; 1), samples)
+
+    # Construct the objective
+    objective = Objective(0, Dict(), Dict(:lambda =&gt; 1))
+
+    # Construct the SOS problem: minimize the objective s.t. the constraint holds
+    problem = Problem(Maximize(objective), [constraint])
+
+    #Solve the SDP and return results
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
+
+    objvalue(problem, dualsol)
+end</code></pre><p>Then we can for example find the minimum of the polynomial <span>$x^2+1$</span> using</p><pre><code class="language-julia hljs">R, x = polynomial_ring(QQ, :x)
+minvalue = polyopt(x^2+1, 1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">0.9999999999999993994756540701031553529836271788965828073225238211505225841705041</code></pre><h3 id="rounding_univariate"><a class="docs-heading-anchor" href="#rounding_univariate">Exact version of Example 2</a><a id="rounding_univariate-1"></a><a class="docs-heading-anchor-permalink" href="#rounding_univariate" title="Permalink"></a></h3><p>To find the minimum exactly we can use the following function.</p><pre><code class="language-julia hljs">using ClusteredLowRankSolver, Nemo
+
+function polyopt_exact(f, d)
+    # Set up the polynomial ring
+    P = parent(f)
+    u = gen(P)
+
+    # Compute the polynomial basis and the samples
+    sosbasis = basis_chebyshev(d, u)
+    samples = [round(BigInt, 10000x)//10000 for x in sample_points_chebyshev(2d, -1, 1)]
+
+    # Construct the constraint SOS + lambda = f
+    c = Dict()
+    c[:X] = LowRankMatPol([1], [sosbasis[1:d+1]])
+    constraint = Constraint(f, c, Dict(:lambda =&gt; 1), samples)
+
+    # Construct the objective
+    objective = Objective(0, Dict(), Dict(:lambda =&gt; 1))
+
+    # Construct the SOS problem: minimize the objective s.t. the constraint holds
+    problem = Problem(Maximize(objective), [constraint])
+
+    #Solve the SDP and return results
+    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
+
+    success, esol = exact_solution(problem, primalsol, dualsol)
+
+    success, objvalue(problem, esol)
+end</code></pre><p>Then we can find the exact minimum of the polynomial <span>$x^2+1$</span> using</p><pre><code class="language-julia hljs">R, x = polynomial_ring(QQ, :x)
+polyopt_exact(x^2+1, 1)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(true, 1)</code></pre></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="tutorial/">Tutorial »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Tuesday 25 February 2025 10:16">Tuesday 25 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
