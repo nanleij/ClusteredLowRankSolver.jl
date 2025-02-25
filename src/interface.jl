@@ -1231,7 +1231,7 @@ traceinner(v::Matrix, m::LowRankMatPol) = traceinner(m, v)
 LinearAlgebra.dot(v::Matrix, m::LowRankMatPol) = traceinner(m, v)
 LinearAlgebra.dot(m::LowRankMatPol, v::Matrix) = traceinner(m, v)
 
-function traceinner(m::Matrix, v::Matrix)
+function traceinner(m::T, v::S) where {S, T <: Union{MatrixElem, Matrix}}
     @assert size(m) == size(v)
     sum(2^(i!=j) * m[i, j] * v[i, j] for i=1:size(m,1) for j=i:size(m,2))
 end
