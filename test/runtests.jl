@@ -4,7 +4,7 @@ using Test
 
 @testset "ClusteredLowRankSolver.jl" begin
 
-    @testset "Emptyxamples" begin
+    @testset "Examples" begin
         # these examples test nearly everything
         include("../examples/PolyOpt.jl")
         using  .PolyOpt
