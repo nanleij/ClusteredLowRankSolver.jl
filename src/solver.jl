@@ -736,12 +736,12 @@ function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ra
     cur_idx = 0
     w = ArbRefMatrix(0, 0, prec=precision(y))
     for j in eachindex(sdp.c)
-        Arblib.window_init!(w, d, cur_idx, 0,cur_idx+size(sdp.c[j],1), 1)
+        mywindow_init!(w, d, cur_idx, 0,cur_idx+size(sdp.c[j],1), 1)
         
         Arblib.approx_mul!(w, sdp.B[j], y)
         Arblib.neg!(w,w)
         Arblib.add!(w,w,sdp.c[j])
-        Arblib.window_clear!(w)
+        mywindow_clear!(w)
         # d[cur_idx+1:cur_idx+size(sdp.c[j],1),1] = sdp.c[j]
         cur_idx += size(sdp.c[j],1)
     end
@@ -915,9 +915,9 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec)
                     pointers_left[j][l][r] = pntr_left
                     unique_left_arb = ArbRefMatrix(length(unique_left),size(left[1],1), prec=prec)
                     for (i, i_vec) in enumerate(unique_left)
-                        Arblib.window_init!(w, unique_left_arb, i-1,0,i,size(unique_left_arb,2))
+                        mywindow_init!(w, unique_left_arb, i-1,0,i,size(unique_left_arb,2))
                         Arblib.transpose!(w, left[i_vec])
-                        Arblib.window_clear!(w)
+                        mywindow_clear!(w)
                     end
                     Arblib.set_round!.(unique_left_arb, unique_left_arb) #round to the wanted precision
                     Arblib.get_mid!(unique_left_arb, unique_left_arb)
@@ -991,33 +991,33 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                 Arblib.get_mid!(tempX[1].blocks[j].blocks[l],tempX[1].blocks[j].blocks[l])
 
                 for r=1:size(sdp.A[j][l],2)
-                    Arblib.window_init!(part_r, temppart_r, 0, 0, size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][r],2))
+                    mywindow_init!(part_r, temppart_r, 0, 0, size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][r],2))
                     # part_r = ArbRefMatrix(size(Y.blocks[j].blocks[l],1), size(rightvecs[j][l][r],2), prec=matmul_prec)
-                    Arblib.window_init!(temp_window, Y.blocks[j].blocks[l], 0, (r-1)*delta, sz, r*delta)
+                    mywindow_init!(temp_window, Y.blocks[j].blocks[l], 0, (r-1)*delta, sz, r*delta)
                     matmul_threaded!(part_r, temp_window, rightvecs[j][l][r], prec=matmul_prec)
-                    Arblib.window_clear!(temp_window)
+                    mywindow_clear!(temp_window)
                     Arblib.get_mid!(part_r, part_r)
                     for s=1:size(sdp.A[j][l],1)
-                        Arblib.window_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
-                        Arblib.window_init!(temp_window2, bilinear_pairings_Y[s,r], 0, 0, size(leftvecs[j][l][s],1), size(part_r,2))
+                        mywindow_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
+                        mywindow_init!(temp_window2, bilinear_pairings_Y[s,r], 0, 0, size(leftvecs[j][l][s],1), size(part_r,2))
                         matmul_threaded!(temp_window2, leftvecs[j][l][s], temp_window, prec=matmul_prec)#,opt=4)
-                        Arblib.window_clear!(temp_window)
-                        Arblib.window_clear!(temp_window2)
+                        mywindow_clear!(temp_window)
+                        mywindow_clear!(temp_window2)
                         Arblib.get_mid!(bilinear_pairings_Y[s,r], bilinear_pairings_Y[s,r])
                     end
-                    Arblib.window_init!(temp_window, tempX[1].blocks[j].blocks[l], 0, (r-1)*delta, sz, r*delta)
+                    mywindow_init!(temp_window, tempX[1].blocks[j].blocks[l], 0, (r-1)*delta, sz, r*delta)
                     matmul_threaded!(part_r, temp_window, rightvecs[j][l][r], prec=matmul_prec)
-                    Arblib.window_clear!(temp_window)
+                    mywindow_clear!(temp_window)
                     Arblib.get_mid!(part_r, part_r)
                     for s=1:size(sdp.A[j][l],1)
-                        Arblib.window_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
-                        Arblib.window_init!(temp_window2, bilinear_pairings_Xinv[s,r], 0, 0, size(leftvecs[j][l][s],1), size(part_r,2))
+                        mywindow_init!(temp_window, part_r, (s-1)*delta, 0, s*delta, size(part_r,2))
+                        mywindow_init!(temp_window2, bilinear_pairings_Xinv[s,r], 0, 0, size(leftvecs[j][l][s],1), size(part_r,2))
                         matmul_threaded!(temp_window2,leftvecs[j][l][s],temp_window,prec=matmul_prec)#,opt=4)
-                        Arblib.window_clear!(temp_window)
-                        Arblib.window_clear!(temp_window2)
+                        mywindow_clear!(temp_window)
+                        mywindow_clear!(temp_window2)
                         Arblib.get_mid!(bilinear_pairings_Xinv[s,r],bilinear_pairings_Xinv[s,r])
                     end
-                    Arblib.window_clear!(part_r)
+                    mywindow_clear!(part_r)
                 end
 
                 #We collect the parts v^T Y v, because we need them to compute <A_*, Y>
@@ -1197,17 +1197,17 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
                             #window matrices
                             w1 = ArbRefMatrix(0, 0 ,prec=precision(Z))
                             w2 = ArbRefMatrix(0, 0, prec=precision(Z))
-                            Arblib.window_init!(w1, Z.blocks[j].blocks[l], (r-1)*delta, (s-1)*delta, r*delta, s*delta)
-                            Arblib.window_init!(w2,vecs_right[j][l][r,s], 0, indices[i], size(vecs_right[j][l][r,s],1), indices[i+1])
+                            mywindow_init!(w1, Z.blocks[j].blocks[l], (r-1)*delta, (s-1)*delta, r*delta, s*delta)
+                            mywindow_init!(w2,vecs_right[j][l][r,s], 0, indices[i], size(vecs_right[j][l][r,s],1), indices[i+1])
                             ZV = ArbRefMatrix(delta,indices[i+1]-indices[i],prec=precision(Z))
                             # we can parallellize here over the samples (rows of vs_transpose)
                             Arblib.approx_mul!(ZV,w1,w2)
-                            Arblib.window_clear!(w1)
-                            Arblib.window_clear!(w2)
+                            mywindow_clear!(w1)
+                            mywindow_clear!(w2)
 
-                            Arblib.window_init!(w1, vecs_left[j][l][r,s], 0, indices[i], size(vecs_left[j][l][r,s],1), indices[i+1])
+                            mywindow_init!(w1, vecs_left[j][l][r,s], 0, indices[i], size(vecs_left[j][l][r,s],1), indices[i+1])
                             Arblib.mul_entrywise!(ZV,ZV,w1)
-                            Arblib.window_clear!(w1)
+                            mywindow_clear!(w1)
                             Arblib.approx_mul!(result_parts[i],ones,ZV)
                         end
                         #Because we did the multiplications in this order we have row vectors to concatenate
@@ -1302,7 +1302,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
                 
                 for r = 1:size(sdp.A[j][l],1)
                     for s = 1:r
-                        Arblib.window_init!(Q, initial_matrix.blocks[j].blocks[l],(r-1)*delta, (s-1)*delta, r*delta, s*delta)
+                        mywindow_init!(Q, initial_matrix.blocks[j].blocks[l],(r-1)*delta, (s-1)*delta, r*delta, s*delta)
                         # Approach: sum_i a_i A_i can be written as V_i D V_i^T, with D diagonal (λ_i,rnk * a_i)
                         # Now we compute V_r D
                         # Scratch space:
@@ -1313,9 +1313,9 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
                             for rnk in eachindex(sdp.A[j][l][r,s][p].lambda)
                                 Arblib.mul!(cur,a[j_idx+p,1],sdp.A[j][l][r,s][p].lambda[rnk])
                                 Arblib.mul!(vec, sdp.A[j][l][r,s][p].vs[rnk],cur)
-                                Arblib.window_init!(w, vecs_right, idx-1, 0,idx, delta)
+                                mywindow_init!(w, vecs_right, idx-1, 0,idx, delta)
                                 Arblib.transpose!(w, vec)
-                                Arblib.window_clear!(w)
+                                mywindow_clear!(w)
                                 idx+=1
                             end
                         end
@@ -1325,7 +1325,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
                         matmul_threaded!(Q,vecs_left[j][l][r,s], vecs_right)
                         Arblib.transpose!(Q,Q)
                         Arblib.get_mid!(Q,Q)
-                        Arblib.window_clear!(Q)
+                        mywindow_clear!(Q)
                     end
                 end
             end

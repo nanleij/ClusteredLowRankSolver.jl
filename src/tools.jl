@@ -219,11 +219,11 @@ function thread_func_inner_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=prec
     parts_B = [T(0,0) for i=1:n]
     part_res = [similar(C) for i=1:n] # when n_inner =1, this is max one copy of C
     Threads.@threads for i=1:n
-        Arblib.window_init!(parts_A[i], A, 0,idxs[i], size(A,1), idxs[i+1])
-        Arblib.window_init!(parts_B[i], B, idxs[i],0, idxs[i+1], size(B,2))
+        mywindow_init!(parts_A[i], A, 0,idxs[i], size(A,1), idxs[i+1])
+        mywindow_init!(parts_B[i], B, idxs[i],0, idxs[i+1], size(B,2))
         Arblib.approx_mul!(part_res[i],parts_A[i],parts_B[i],prec=prec)
-        Arblib.window_clear!(parts_A[i])
-        Arblib.window_clear!(parts_B[i])
+        mywindow_clear!(parts_A[i])
+        mywindow_clear!(parts_B[i])
     end
     Arblib.set!(C, part_res[1])
     for i=2:n
@@ -240,11 +240,11 @@ function thread_func_left_window!(C::T,A::T,B::T;n=Threads.nthreads(),prec=preci
     parts_A = [T(0,0) for i=1:n]
     part_res = [T(0,0) for i=1:n] # when n_inner =1, this is max one copy of C
     Threads.@threads for i=1:n
-        Arblib.window_init!(parts_A[i], A, idxs[i], 0, idxs[i+1], size(A,2))
-        Arblib.window_init!(part_res[i], C, idxs[i], 0, idxs[i+1], size(C,2))
+        mywindow_init!(parts_A[i], A, idxs[i], 0, idxs[i+1], size(A,2))
+        mywindow_init!(part_res[i], C, idxs[i], 0, idxs[i+1], size(C,2))
         Arblib.approx_mul!(part_res[i],parts_A[i],B,prec=prec)
-        Arblib.window_clear!(parts_A[i])
-        Arblib.window_clear!(part_res[i])
+        mywindow_clear!(parts_A[i])
+        mywindow_clear!(part_res[i])
     end
 end
 
@@ -257,11 +257,11 @@ function thread_func_right_window!(C::T,A::T,B::T; n =Threads.nthreads(), prec=p
     parts_B = [T(0,0, prec=prec) for i=1:n]
     part_res = [T(0,0,prec=prec) for i=1:n] # when n_inner =1, this is max one copy of C
     Threads.@threads for i=1:n
-        Arblib.window_init!(parts_B[i], B, 0, idxs[i], size(B,1), idxs[i+1])
-        Arblib.window_init!(part_res[i], C, 0, idxs[i], size(C,1), idxs[i+1])
+        mywindow_init!(parts_B[i], B, 0, idxs[i], size(B,1), idxs[i+1])
+        mywindow_init!(part_res[i], C, 0, idxs[i], size(C,1), idxs[i+1])
         Arblib.approx_mul!(part_res[i],A,parts_B[i],prec=prec)
-        Arblib.window_clear!(parts_B[i])
-        Arblib.window_clear!(part_res[i])
+        mywindow_clear!(parts_B[i])
+        mywindow_clear!(part_res[i])
     end
 end
 
@@ -280,4 +280,25 @@ precision(P::BlockDiagonal) = precision(P.blocks[1]) #we assume that all blocks 
 precision(x) = Base.precision(x) #for other things, just use the Base version
 
 
+function mywindow_init!(B::T, A::T, r1, c1, r2, c2) where T<:Union{AL.ArbMatrix, AL.ArbRefMatrix}
+    # keep the pointer to restore B 
+    @assert size(B) == (0,0)
+    Arblib.window_init!(B, A, r1, c1, r2, c2)
+end
+
+function mywindow_clear!(B::T) where T<:Union{AL.ArbMatrix, AL.ArbRefMatrix}
+    @static if pkgversion(AL.FLINT_jll) < v"301.0" 
+        # works with the 'normal' clear function
+        Arblib.window_clear!(B)
+        # set the size of B to 0
+        B.arb_mat.c = 0
+        B.arb_mat.r = 0
+    else
+        B.arb_mat.entries = Ptr{Arblib.arb_struct}(C_NULL)
+        B.arb_mat.stride = 0
+        B.arb_mat.c = 0
+        B.arb_mat.r = 0
+        B
+    end
+end
 
