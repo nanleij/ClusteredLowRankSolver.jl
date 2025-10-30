@@ -38,6 +38,24 @@ using Test
         @test objvalue(oldproblem, dualsol1) ≈ objvalue(newproblem, dualsol2) atol=1e-10
     end
 
+    @testset "saving" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint])
+        _,primalsol,dualsol,_ = solvesdp(problem, save_settings=SaveSettings(iter_interval=1, save_name="test"))
+        @test isfile("test.jls")
+        _,primalsol,dualsol,_ = solvesdp(problem, save_settings=SaveSettings(time_interval=1, save_name="test#", only_last=false))
+        @test isfile("test1.jls")
+        _,primalsol,dualsol,_ = solvesdp(problem, save_settings=SaveSettings(iter_interval=1, save_name="testiter#", only_last=false))
+        @test isfile("testiter1.jls")
+        # remove test saves
+        for f in readdir()
+            if occursin(".jls", f)
+                rm(f)
+            end
+        end
+    end
+
     @testset "Warnings" begin
         obj = Objective(0, Dict(:z=> hcat([1])), Dict())
         constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())

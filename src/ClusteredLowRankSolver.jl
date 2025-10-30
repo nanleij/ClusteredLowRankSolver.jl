@@ -4,6 +4,7 @@ using IterTools, LinearAlgebra, Printf, BlockDiagonals, GenericLinearAlgebra
 using Nemo
 using Arblib
 using Combinatorics: multiexponents
+using Serialization
 
 const AL = Arblib
 const RF = Nemo.AbstractAlgebra.RealField # Nemo realfield is ArbField(64), this one is BigFloats (264 bits)
@@ -51,6 +52,8 @@ export basis_monomial, basis_laguerre, basis_jacobi, basis_chebyshev, basis_gege
 export sample_points_simplex, sample_points_padua, sample_points_rescaled_laguerre, sample_points_chebyshev, sample_points_chebyshev_mod
 
 export sdpa_sparse_to_problem
+
+export SaveSettings
 
 include("interface.jl")
 

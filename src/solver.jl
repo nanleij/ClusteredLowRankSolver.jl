@@ -9,6 +9,29 @@ An error in the solver, with a message.
 struct SolverFailure <: Exception
     msg::String
 end
+"""
+    SaveSettings(;kth_iteration=nothing, time_interval=nothing, only_last=true, save_name="solution")
+
+Settings for saving iterates during the solving process.
+    - iter_interval : if an integer, save every 'iter_interval'-th iteration.
+    - time_interval : if a Float64, save every 'time_interval' seconds. The solution is only saved at the end of an iteration.
+    - only_last : if true, delete previous saves after saving a new iterate.
+    - save_name : the name of the saved solution. A .jls extension is added. If only_last=false, a # is required in the name, which is used as placeholder for the save number. 
+"""
+struct SaveSettings
+    iter_interval::Union{Int, Nothing}
+    time_interval::Union{Real, Nothing}
+    only_last::Bool
+    save_name::String
+    function SaveSettings(;iter_interval::Union{Int, Nothing}=nothing, time_interval::Union{Real, Nothing}=nothing, only_last::Bool=true, save_name="solution" * (only_last ? "" : "#"))
+        if !only_last && !occursin("#", save_name) && (!isnothing(iter_interval) || !isnothing(time_interval))
+            # need a # in the save name
+            @info "Adding a # to the save name"
+            save_name *= "#"
+        end
+        new(iter_interval, time_interval, only_last, save_name)
+    end
+end
 
 """
 ```
@@ -34,6 +57,7 @@ Keyword arguments:
   - `primalsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
   - `dualsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
   - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is primal and dual feasible
+  - `save_settings` (default: SaveSettings(), not saved): use the SaveSettings to determine whether and how often the iterates are saved during the algorithm. 
 """
 function solvesdp(
     problem::Problem;
@@ -86,6 +110,7 @@ function solvesdp(
     dualsol::Union{Nothing,DualSolution}=nothing,
     safe_step::Bool=true,
     correctoronly=false,
+    save_settings::SaveSettings=SaveSettings(),
     #experimental & testing:
     matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
 	testing=false, # print the times of the first two iterations. This is for testing purposes
@@ -280,6 +305,14 @@ function solvesdp(
         dual_error_threshold,
     )
     error_code = [0] #success
+
+    # saving:
+    save_count = 0
+    save_now = false
+    save_iteration_count = 0
+    last_save_iteration = 0
+    save_time_start = time()
+
     #we keep track of allocations and time of some of the parts of the algorithm
     allocs = zeros(6)
     timings = zeros(17)
@@ -433,6 +466,29 @@ function solvesdp(
                 Arblib.get_mid!(Y.blocks[j].blocks[l], Y.blocks[j].blocks[l])
             end
         end
+        # saving the solution
+        save_iteration_count+=1
+        if !isnothing(save_settings.iter_interval) && save_iteration_count - last_save_iteration >= save_settings.iter_interval
+            save_now = true
+            last_save_iteration = save_iteration_count
+        end
+        if !isnothing(save_settings.time_interval) && time() - save_time_start >= save_settings.time_interval
+            save_now = true
+            save_time_start = time()
+        end
+        if save_now
+            if save_settings.only_last # overwrite
+                save_name = save_settings.save_name * ".jls"
+            else
+                save_count += 1
+                save_name = replace(save_settings.save_name, "#" => save_count) * ".jls"
+            end
+            primalsol, dualsol = solution_to_bigfloat(X, x, Y, y, sdp)
+            serialize(save_name, (primalsol, dualsol))
+            save_now = false
+        end
+
+
         # We save the times of everything except for the first iteration, as they may include compile time
         if iter >= 2
             timings[1] += time_decomp
@@ -527,41 +583,19 @@ function solvesdp(
     dual_gap = compute_duality_gap(p_obj, d_obj)
     primalobj = BigFloat(p_obj)
     dualobj = BigFloat(d_obj)
-    X = BlockDiagonal([BlockDiagonal([BigFloat.(s) for s in W.blocks]) for W in X.blocks])
-    Y = BlockDiagonal([BlockDiagonal([BigFloat.(s) for s in W.blocks]) for W in Y.blocks])
-    x = BigFloat.(x[:,1])
-    y = BigFloat.(y[:,1])
+    primalsol, dualsol = solution_to_bigfloat(X, x, Y, y, sdp)
 
-	matrixvars = Dict{Any,Matrix{BigFloat}}()
-    matrixvars_primal = Dict{Any,Matrix{BigFloat}}()
-
-    # we assume that subblocks are all of the same size
-    for j in eachindex(sdp.matrix_coeff_names)
-        for k in eachindex(sdp.matrix_coeff_names[j])
-            use_block, nsubblocks = sdp.matrix_coeff_blocks[j][k]
-            totalsize = size(Y.blocks[j].blocks[k],1)
-            sizes = [div(totalsize, nsubblocks) for i=1:nsubblocks]
-            for r=1:nsubblocks, s=1:nsubblocks # we will return the whole square matrix
-                hs = 1+sum(sizes[1:r-1]):sum(sizes[1:r])
-                vs = 1+sum(sizes[1:s-1]):sum(sizes[1:s])
-                if use_block
-                    bl = Block(sdp.matrix_coeff_names[j][k], r, s)
-                else
-                    @assert nsubblocks == 1
-                    bl = sdp.matrix_coeff_names[j][k]
-                end
-                matrixvars[bl] = Y.blocks[j].blocks[k][hs, vs]
-                matrixvars_primal[bl] = X.blocks[j].blocks[k][hs, vs]
-            end
+    if !isnothing(save_settings.time_interval) || (!isnothing(save_settings.iter_interval) && last_save_iteration != save_iteration_count)
+        # most probably not just saved
+        if save_settings.only_last # overwrite
+            save_name = save_settings.save_name * ".jls"
+        else
+            save_count += 1
+            save_name = replace(save_settings.save_name, "#" => save_count) * ".jls"
         end
+        serialize(save_name, (primalsol, dualsol))
     end
-    freevars = Dict{Any,BigFloat}()
-    for j in eachindex(sdp.free_coeff_names)
-        name = sdp.free_coeff_names[j]
-        freevars[name] = y[j]
-    end
-	dualsol = DualSolution{BigFloat}(BigFloat, matrixvars, freevars)
-	primalsol = PrimalSolution{BigFloat}(BigFloat, x, matrixvars_primal)
+
 
     if verbose
 		@printf(
@@ -659,6 +693,45 @@ function solvesdp(
     end
 
     status, primalsol, dualsol, time_total, error_code[1]
+end
+
+function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
+    X = BlockDiagonal([BlockDiagonal([BigFloat.(s) for s in W.blocks]) for W in X_var.blocks])
+    Y = BlockDiagonal([BlockDiagonal([BigFloat.(s) for s in W.blocks]) for W in Y_var.blocks])
+    x = BigFloat.(x_var[:,1])
+    y = BigFloat.(y_var[:,1])
+
+	matrixvars = Dict{Any,Matrix{BigFloat}}()
+    matrixvars_primal = Dict{Any,Matrix{BigFloat}}()
+
+    # we assume that subblocks are all of the same size
+    for j in eachindex(sdp.matrix_coeff_names)
+        for k in eachindex(sdp.matrix_coeff_names[j])
+            use_block, nsubblocks = sdp.matrix_coeff_blocks[j][k]
+            totalsize = size(Y.blocks[j].blocks[k],1)
+            sizes = [div(totalsize, nsubblocks) for i=1:nsubblocks]
+            for r=1:nsubblocks, s=1:nsubblocks # we will return the whole square matrix
+                hs = 1+sum(sizes[1:r-1]):sum(sizes[1:r])
+                vs = 1+sum(sizes[1:s-1]):sum(sizes[1:s])
+                if use_block
+                    bl = Block(sdp.matrix_coeff_names[j][k], r, s)
+                else
+                    @assert nsubblocks == 1
+                    bl = sdp.matrix_coeff_names[j][k]
+                end
+                matrixvars[bl] = Y.blocks[j].blocks[k][hs, vs]
+                matrixvars_primal[bl] = X.blocks[j].blocks[k][hs, vs]
+            end
+        end
+    end
+    freevars = Dict{Any,BigFloat}()
+    for j in eachindex(sdp.free_coeff_names)
+        name = sdp.free_coeff_names[j]
+        freevars[name] = y[j]
+    end
+	dualsol = DualSolution{BigFloat}(BigFloat, matrixvars, freevars)
+	primalsol = PrimalSolution{BigFloat}(BigFloat, x, matrixvars_primal)
+    return primalsol, dualsol
 end
 
 """Compute the primal objective <c, x> + constant"""
