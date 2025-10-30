@@ -17,6 +17,7 @@ makedocs(plugins=[bib],
         "Tutorial" => "tutorial.md",
         "Advanced modeling" => "advancedmodeling.md",
         "Solving" => "solving.md",
+        "Saving" => "saving.md"
         "Rounding" => "rounding.md",
         "SDPA-sparse format" => "sdpa.md",
         "Examples" => [
