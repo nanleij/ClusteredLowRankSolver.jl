@@ -370,7 +370,13 @@ end
 
 myevaluate(x::T, s) where T <: Real = x 
 myevaluate(x::T, s) where T <: RingElem = x 
-myevaluate(x::T, s) where T <: Union{MPolyRingElem, PolyRingElem} = evaluate(x, s)
+function myevaluate(x::T, s) where T <: Union{MPolyRingElem, PolyRingElem} 
+    if length(size(s)) == 0
+        constant_coefficient(x)
+    else
+        evaluate(x, s)
+    end
+end
 myevaluate(x::SampledMPolyRingElem, s) = evaluate(x, s)
 myevaluate(x::LowRankMatPol, s) = evaluate(x, s)
 function myevaluate(p::Matrix, sample; scaling=1)
