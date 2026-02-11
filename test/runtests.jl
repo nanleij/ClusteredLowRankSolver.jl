@@ -65,7 +65,7 @@ using Test
         problem2 = Problem(Maximize(obj), [constraint, c3])
         @test_logs (:warn, "Please use LowRankMatPol consistently for the constraint matrices corresponding to the variable z. Converting to normal matrices.") ClusteredLowRankSDP(problem)
         @test_logs (:warn, "Please use Block consistently. Solutions with Block(z2) will be returned.") ClusteredLowRankSDP(problem2)
-    # end
+    end
 
     @testset "Rounding" begin
         include("../examples/DelsarteExact.jl")
