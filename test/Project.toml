@@ -1,5 +1,6 @@
 [deps]
 AbstractAlgebra = "c3fe647b-3220-5bb0-a1ea-a7954cac585d"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 Nemo = "2edaba10-b0f1-5616-af89-8c11ac63239a"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"

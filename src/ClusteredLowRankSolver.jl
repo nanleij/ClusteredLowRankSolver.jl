@@ -71,6 +71,10 @@ include("basesandsamples.jl")
 
 include("SDPAtoCLRS.jl")
 
-include("precompile.jl")
+include("MOI_wrapper/MOI_wrapper.jl")
+
+# include("precompile.jl")
+
+
 
 end
