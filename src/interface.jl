@@ -903,7 +903,7 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
         println("Sampling the low rank polynomial matrices...")
     end
     A = []
-    C = []
+    C = Vector{ArbRefMatrix}[]
     matrix_coeff_blocks = Vector{Tuple{Bool, Int}}[]
     matrix_coeff_names = []
     for clusterindex in eachindex(cluster_constraint_index)

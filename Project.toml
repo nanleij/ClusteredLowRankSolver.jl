@@ -1,7 +1,7 @@
 name = "ClusteredLowRankSolver"
 uuid = "cadeb640-247c-4e6d-a8b8-270aef5e1f95"
+version = "1.2.1"
 authors = ["nanleij <38724800+nanleij@users.noreply.github.com> and contributors"]
-version = "1.2.0"
 
 [deps]
 Arblib = "fb37089c-8514-4489-9461-98f9c8763369"
@@ -20,13 +20,13 @@ RowEchelon = "af85af4c-bcd5-5d23-b03a-a909639aa875"
 Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 
 [compat]
-Arblib = "0.6, 0.7, 0.8, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5"
+Arblib = "0.6, 0.7, 0.8, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7"
 BlockDiagonals = "0.1, 0.2"
-Combinatorics = "1.0"
+Combinatorics = "1.0, 1.1"
 GenericLinearAlgebra = "0.2, 0.3"
 IterTools = "1"
 KrylovKit = "0.5, 0.6, 0.7, 0.8, 0.9, 0.10"
-Nemo = "0.43, 0.44, 0.45, 0.46, 0.47, 0.48, 0.49, 0.50, 0.51, 0.52"
+Nemo = "0.43, 0.44, 0.45, 0.46, 0.47, 0.48, 0.49, 0.50, 0.51, 0.52, 0.53, 0.54"
 PrecompileTools = "1"
 RowEchelon = "0.2"
 Serialization = "1.9,1.10,1.11"
