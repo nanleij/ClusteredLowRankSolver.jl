@@ -965,11 +965,11 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         if find_extra_vectors
             # add standard basis vectors at the end
             for i=1:N
-                vexact = zero_matrix(FF, N, 1)
-                vexact[i, 1] = FF(1)
+                vexact = zeros(FF, N)
+                vexact[i] = FF(1)
                 push!(finalvectors, vexact)
-                v = zero_matrix(AF, N, 1)
-                v[i, 1] = AF(1)
+                v = zeros(AF, N)
+                v[i] = AF(1)
                 push!(float_vecs, v)
             end
         else
