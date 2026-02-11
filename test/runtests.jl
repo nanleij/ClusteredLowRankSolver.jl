@@ -65,7 +65,7 @@ using Test
         problem2 = Problem(Maximize(obj), [constraint, c3])
         @test_logs (:warn, "Please use LowRankMatPol consistently for the constraint matrices corresponding to the variable z. Converting to normal matrices.") ClusteredLowRankSDP(problem)
         @test_logs (:warn, "Please use Block consistently. Solutions with Block(z2) will be returned.") ClusteredLowRankSDP(problem2)
-    end
+    # end
 
     @testset "Rounding" begin
         include("../examples/DelsarteExact.jl")
@@ -99,35 +99,52 @@ using Test
         end
         #rounding settings: the true/false options
         @test begin
-            n, d, costheta = (8, 3, 1//2)
-            obj, problem, primalsol, dualsol = delsarte_exact(n, d, costheta; prec=512)
+            n1, d1, costheta1, val1 = (8, 3, 1//2, 240)
+            obj, problem1, primalsol1, dualsol1 = delsarte_exact(n1, d1, costheta1; prec=512)
             
             # for using a monomial basis
-            R, x = polynomial_ring(Nemo.AbstractAlgebra.QQ, :x)
-            b = [x^k for k=0:2d]
+            R1, x1 = polynomial_ring(QQ, :x)
+            b1 = [x1^k for k=0:2d1]
+
+            # for testing over number field:
+            N, z = number_field(x1^2 - 5, :z)
+            gapprox = sqrt(big(5))
+            n2, d2, costheta2, val2 = (3, 2, 1/z, 12)
+            obj2, problem2, primalsol2, dualsol2 = delsarte_exact(n2, d2, costheta2; FF=N, g = gapprox)
+
+            R2, x2 = polynomial_ring(N, :x)
+            b2 = [x2^k for k=0:2d2]
 
             # test if everything works with Nemo matrices (MatrixElem)
-            for k=0:2d
-                problem.constraints[1].matrixcoeff[k] = matrix(R, problem.constraints[1].matrixcoeff[k])
+            for k=0:2d2
+                problem2.constraints[1].matrixcoeff[k] = matrix(R2, problem2.constraints[1].matrixcoeff[k])
             end
-            all_success=true
-            for k in Iterators.product([[true,false] for i=1:7]...)
-                for s=[2, 100]
-                    settings = RoundingSettings(
-                        kernel_lll=k[1],
-                        kernel_use_primal=k[2],
-                        reduce_kernelvectors=k[3],
-                        unimodular_transform=k[4],
-                        normalize_transformation=k[5],
-                        pseudo=k[6], 
-                        extracolumns_linindep=k[7],
-                        reduce_kernelvectors_cutoff=s,
-                        reduce_kernelvectors_stepsize=s == 2 ? 1 : 100)
-                    success, exactdualsol = exact_solution(problem, primalsol, dualsol, monomial_bases=[b], settings=settings, verbose=false)
-                    success, exactdualsol = exact_solution(problem, primalsol, dualsol, settings=settings, verbose=false)
 
-                    # success, problem, exactdualsol = delsarte_round(8, 3, 1//2, settings=settings)
-                    all_success = all_success && success && objvalue(problem, exactdualsol) == 240     
+            all_success=true
+            for idx=1:2 # QQ or not QQ
+                if idx == 1
+                    problem, primalsol, dualsol, b, FF, g, val = problem1, primalsol1, dualsol1, b1, QQ, BigFloat(1), val1
+                else
+                    problem, primalsol, dualsol, b, FF, g, val = problem2, primalsol2, dualsol2, b2, N, gapprox, val2
+                end
+                for k in Iterators.product([[true,false] for i=1:7]...)
+                    for s=[2, 100]
+                        settings = RoundingSettings(
+                            kernel_lll=k[1],
+                            kernel_use_primal=k[2],
+                            reduce_kernelvectors=k[3],
+                            unimodular_transform=k[4],
+                            normalize_transformation=k[5],
+                            pseudo=k[6], 
+                            extracolumns_linindep=k[7],
+                            reduce_kernelvectors_cutoff=s,
+                            reduce_kernelvectors_stepsize=s == 2 ? 1 : 100)
+                        success1, exactdualsol = exact_solution(problem, primalsol, dualsol; FF=FF, g=g, monomial_bases=[b], settings=settings, verbose=false)
+                        success2, exactdualsol = exact_solution(problem, primalsol, dualsol; FF=FF, g=g, settings=settings, verbose=false)
+
+                        # success, problem, exactdualsol = delsarte_round(8, 3, 1//2, settings=settings)
+                        all_success = all_success && success1 && success2 && objvalue(problem, exactdualsol) == val     
+                    end
                 end
             end
             all_success      

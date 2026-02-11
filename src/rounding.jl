@@ -1244,11 +1244,11 @@ function convert_system(FF, A, b)
     # 2) combine A_i,x_j to get b_k -> find blocks of new system
     # 3) make system by multiplying by inverse of g^k
     g = gen(FF)
-    Ai = [QQ.(coeff.(A, k)) for k=0:degree(FF)-1]
+    Ai = [matrix(QQ, coeff.(A, k)) for k=0:degree(FF)-1]
     btot = vcat([coeff.(b, k) for k=0:degree(FF)-1]...)
     # btot = matrix(QQ, length(btot), 1, btot)
 
-    n,m = size(A)
+    n, m = size(A)
     Atot = zero_matrix(QQ, n*degree(FF), m*degree(FF))
     for i=0:degree(FF)-1
         for j=0:degree(FF)-1
@@ -1258,7 +1258,7 @@ function convert_system(FF, A, b)
             for k=0:degree(FF)-1
                 if coeff(cur_gen, k) != 0
                     #add A_i to the k-th row, j-th column of the block-matrix
-                    Atot[n*k+1:n*(k+1), m*j+1:m*(j+1)] += coeff(cur_gen,k) .* Ai[i+1]
+                    Atot[n*k+1:n*(k+1), m*j+1:m*(j+1)] += coeff(cur_gen,k) * Ai[i+1]
                 end
             end
         end
