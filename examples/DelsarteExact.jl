@@ -29,18 +29,18 @@ function delsarte_exact(n, d, costheta; FF=QQ, g=1, eps=1e-40, kwargs...)
     problem = Problem(Minimize(objective), constraints)
 
     problem_bigfloat = map(x->generic_embedding(x, g), problem)
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem_bigfloat; duality_gap_threshold=eps, kwargs...)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem_bigfloat; duality_gap_threshold=eps, kwargs...)
 
-    return objvalue(problem, dualsol), problem, primalsol, dualsol
+    return objvalue(problem, primalsol), problem, dualsol, primalsol
 end
 
 function delsarte_round(n, d, costheta; eps=1e-40, prec=512, settings=RoundingSettings())
-    obj, problem, primalsol, dualsol = delsarte_exact(n, d, costheta; eps=eps, prec=prec)
+    obj, problem, dualsol, primalsol = delsarte_exact(n, d, costheta; eps=eps, prec=prec)
     # use monomial basis
     R, x = polynomial_ring(QQ, :x)
     b = [x^k for k=0:2d]
-    success, exactdualsol = exact_solution(problem, primalsol, dualsol, monomial_bases=[b], settings=settings)
-    return success, problem, exactdualsol
+    success, exactprimalsol = exact_solution(problem, dualsol, primalsol, monomial_bases=[b], settings=settings)
+    return success, problem, exactprimalsol
 end
 
 end # end module

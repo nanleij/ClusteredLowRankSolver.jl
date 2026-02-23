@@ -5,7 +5,7 @@ Settings for the rounding procedure:
 1. Finding the kernel
     - `kernel_errbound`: (default: `1e-10`) the allowed error for the kernel vectors. That is, the maximum entry of Xv is in absolute value at most this
     - `kernel_round_errbound`: (default: `1e-15`) the maximum allowed error when rounding the reduced row-echelon form entrywise
-    - `kernel_use_primal`: (default: `true`) use the primal solution to find the kernel vectors  (otherwise, use an SVD of the dual solution)
+    - `kernel_use_dual`: (default: `true`) use the dual solution to find the kernel vectors  (otherwise, use an SVD of the primal solution)
     - `kernel_lll`: (default: `false`) if true, use the LLL algorithm to find the nullspace of the kernel. Otherwise, use the reduced row-echelon form to find kernel vectors.
     - `kernel_bits`: (default: `1000`) the maximum number of bits to be used in the LLL algorithm (for finding relations or finding the entries of the RREF)
 2. Reducing the kernel vectors
@@ -29,7 +29,7 @@ struct RoundingSettings
     kernel_bits::Int64
     kernel_errbound::Float64
     kernel_round_errbound::Float64
-    kernel_use_primal::Bool
+    kernel_use_dual::Bool
     reduce_kernelvectors::Bool # use the reduction heuristic
     reduce_kernelvectors_cutoff::Int64
     reduce_kernelvectors_stepsize::Int64
@@ -45,7 +45,7 @@ struct RoundingSettings
                                kernel_bits=1000,
                                kernel_errbound=1e-10,
                                kernel_round_errbound=1e-15, #with 1e-20, 1e-40 eps is not enough for the larger matrices
-                               kernel_use_primal=true,
+                               kernel_use_dual=true,
                                reduce_kernelvectors=true,
                                reduce_kernelvectors_cutoff = 400, #only for very big matrices we want this
                                reduce_kernelvectors_stepsize = 200,
@@ -65,7 +65,7 @@ struct RoundingSettings
             kernel_bits,
             kernel_errbound,
             kernel_round_errbound,
-            kernel_use_primal,
+            kernel_use_dual,
             reduce_kernelvectors,
             reduce_kernelvectors_cutoff,
             reduce_kernelvectors_stepsize,
@@ -92,7 +92,7 @@ function preprocess_rows!(A, b; include_b=false)
     return A, b
 end
 
-function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6; verbose=true)
+function select_columns(problem::Problem, sol::PrimalSolution, redundancyfactor=6; verbose=true)
     nconstraints = sum(x->length(x.samples), problem.constraints)
     x = vectorize(sol)
     nvars = length(x)
@@ -102,7 +102,7 @@ function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6;
     end
 
     # Select the elements on the diagonal and directly above/below it 
-    v = as_dual_solution(sol, zeros(Int,nvars))
+    v = as_primal_solution(sol, zeros(Int,nvars))
     for (k, m) in v.matrixvars
         m = zero(m)
         for i in axes(m,1)
@@ -152,7 +152,7 @@ function select_columns(problem::Problem, sol::DualSolution, redundancyfactor=6;
     return pivot_cols
 end
 
-function project_to_affine_space(problem::Problem, sol::DualSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing, verbose=true)
+function project_to_affine_space(problem::Problem, sol::PrimalSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing, verbose=true)
     finished = false
     extra_redundancy = 0
     while !finished
@@ -173,7 +173,7 @@ function project_to_affine_space(problem::Problem, sol::DualSolution; FF=QQ, g=1
             end
             # we still need to go back to the field (what's a good name?)
             x_FF = xrational_to_field(x, FF)
-            return as_dual_solution(sol, x_FF), correct_slacks
+            return as_primal_solution(sol, x_FF), correct_slacks
         end
     end
 end
@@ -364,7 +364,7 @@ function solve_system_pseudoinverse(A,b)
 end
 
 # g is an approximation of the real root that is used as generator
-function is_valid_solution(problem::Problem, sol::DualSolution; check_slacks=true,  FF=QQ, g=1, verbose=true)
+function is_valid_solution(problem::Problem, sol::PrimalSolution; check_slacks=true,  FF=QQ, g=1, verbose=true)
     success = true
     if check_slacks
         verbose && print("Checking whether slacks are zero...")
@@ -557,7 +557,7 @@ function roundx(A,b,x,g,deg; regularization=1e-30, prec=512, power=40)
     end
     B = Af[:, m+1:end]
 
-    lhs = transpose(B) * B + arbs(regularization) * one(matrix(arbs, zeros(ncols(B), ncols(B))))
+    lhs = transpose(B) * B + arbs(regularization) * identity_matrix(arbs, ncols(B))
     y = solve(lhs, transpose(B) * rhs, side=:right)
 
     #now y = x_1, x_2, ..., x_{deg-1}
@@ -568,25 +568,25 @@ function roundx(A,b,x,g,deg; regularization=1e-30, prec=512, power=40)
 end
 
 """
-    detecteigenvectors(primalblock, dualblock; FF=QQ, g=1, settings::RoundingSettings)
+    detecteigenvectors(dualblock, primalblock; FF=QQ, g=1, settings::RoundingSettings)
 
-Find exact eigenvectors of `dualblock` over the field `FF` with approximate generator `g`.
+Find exact eigenvectors of `primalblock` over the field `FF` with approximate generator `g`.
 """
-function detecteigenvectors(primalblock::Matrix{T}, dualblock::Matrix{T};
+function detecteigenvectors(dualblock::Matrix{T}, primalblock::Matrix{T};
             FF=QQ, g=1, check_dimensions=false, settings::RoundingSettings) where T
     deg = degree(FF)
     z = gen(FF)
 
-    # Without primalblock:
-    if !settings.kernel_use_primal || maximum(abs.(primalblock)) > 1/sqrt(settings.kernel_round_errbound)
-        tmp = svd(dualblock)
+    # Without dualblock:
+    if !settings.kernel_use_dual || maximum(abs.(dualblock)) > 1/sqrt(settings.kernel_round_errbound)
+        tmp = svd(primalblock)
         num_evs = count(x->abs(x)<settings.kernel_errbound, tmp.S)
         if num_evs  == 0
             return []
         end
         mat = Matrix(transpose(tmp.U[:, end-num_evs+1:end]))
     else
-        mat = copy(primalblock)
+        mat = copy(dualblock)
     end
 
     #TODO: check out whether we can do this with LU; 
@@ -595,14 +595,14 @@ function detecteigenvectors(primalblock::Matrix{T}, dualblock::Matrix{T};
     
     #keep only the nonzero rows; those are a basis for the kernelvectors
     vecs = [mat[i, :] for i in axes(mat,1) if norm(mat[i, :]) > settings.kernel_errbound]
-    @assert all(maximum(abs.(dualblock * v)) < settings.kernel_errbound for v in vecs)
+    @assert all(maximum(abs.(primalblock * v)) < settings.kernel_errbound for v in vecs)
     
     #check whether the dimensions of the non-kernel vectors add up to the ambient dimension
     if check_dimensions
-        mat2 = copy(dualblock)
+        mat2 = copy(primalblock)
         RowEchelon.rref!(mat2, settings.kernel_errbound)
         nonzeros = [i for i in axes(mat2, 1) if norm(mat[i,:])  > settings.kernel_errbound]
-        @assert length(vecs) + length(nonzeros) == size(dualblock,1)
+        @assert length(vecs) + length(nonzeros) == size(primalblock,1)
     end
 
     # round the kernel vectors entrywise
@@ -615,7 +615,7 @@ function detecteigenvectors(primalblock::Matrix{T}, dualblock::Matrix{T};
     # test whether kernel_vecs are really kernel vectors
     for (i,kv) in enumerate(kernel_vecs)
         kv_float = generic_embedding.(kv, g, base_ring=BigFloat)
-        res = dualblock * kv_float
+        res = primalblock * kv_float
         if maximum(abs.(res)) > settings.kernel_errbound
             @show maximum(abs.(kv_float))
             error("Warning: wrong vector detected! (error = $(Float64.(maximum(abs.(res)))))")
@@ -657,7 +657,7 @@ function detecteigenvectors(block::Matrix{T}, bits::Int=10^3, errbound=1e-15; FF
             l = clindep(m[s,:], bits, errbound)
             # we have an equation for every power of the generator
             if deg == 1
-                new_row = zeros(ZZ, size(m,1))
+                new_row = ZZ.(zeros(Int, size(m,1)))
                 for (idx,val) in zip(s,l)
                     new_row[idx] = val
                 end
@@ -672,7 +672,7 @@ function detecteigenvectors(block::Matrix{T}, bits::Int=10^3, errbound=1e-15; FF
                 for r in eachrow(AQQ)
                     lcm_row = lcm(denominator.(r))
                     r = ZZ.(lcm_row .* r)
-                    new_row = zeros(ZZ, size(m,1))
+                    new_row = ZZ.(zeros(Int, size(m,1)))
                     for (idx,val) in enumerate(r)
                         new_row[idx] = val
                     end
@@ -725,18 +725,18 @@ function detecteigenvectors(block::Matrix{T}, bits::Int=10^3, errbound=1e-15; FF
 end
 
 """
-    basis_transformations(primalsol, dualsol; FF=QQ, g=1, settings=RoundingSettings())
+    basis_transformations(dualsol, primalsol; FF=QQ, g=1, settings=RoundingSettings())
 
-Return basis transformations for each matrix variable in dualsol such that the first few columns 
+Return basis transformations for each matrix variable in primalsol such that the first few columns 
 of the transformation correspond to kernel vectors. The result is a dictionary with keys corresponding to 
-the variables of dualsol, and values `(transpose(B), B^-1, num_kernelvecs)` so that `(transpose(B) X B)[1:num_kernelvecs, 1:num_kernelvecs]`
+the variables of primalsol, and values `(transpose(B), B^-1, num_kernelvecs)` so that `(transpose(B) X B)[1:num_kernelvecs, 1:num_kernelvecs]`
 is approximately zero.
 """
-function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings(),verbose=true)
+function basis_transformations(dualsol::DualSolution, sol::PrimalSolution; FF=QQ, g=1, settings::RoundingSettings=RoundingSettings(),verbose=true)
     Bs = Dict()
     for k in sort(collect(keys(sol.matrixvars)), by=k->(size(sol.matrixvars[k],1), hash(k)))
         m = matrixvar(sol, k)
-        pm = matrixvar(primalsol, k)
+        dm = matrixvar(dualsol, k)
         verbose && println("  Block ", k, " of size $(size(m,1)) x $(size(m,2))")
         zerolist = Int[]
         list = Vector{typeof(FF(1))}[]
@@ -755,7 +755,7 @@ function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=
         nonzerolist = filter(x -> !(x in zerolist), collect(1:size(m, 1)))
         N = length(zerolist) + length(nonzerolist)
         m = m[nonzerolist, nonzerolist]
-        pm = pm[nonzerolist, nonzerolist]
+        dm = dm[nonzerolist, nonzerolist]
         n = size(m, 1)
         if n > 0
             # the list of eigenvectors in FF
@@ -764,13 +764,13 @@ function basis_transformations(primalsol::PrimalSolution, sol::DualSolution; FF=
             if settings.kernel_lll
                 prelist = detecteigenvectors(m, settings.kernel_bits, settings.kernel_errbound; FF=FF, g=g)
                 for l in prelist
-                    v = zeros(FF, N)
+                    v = FF.(zeros(Int, N))
                     v[nonzerolist] = l
                     push!(list, v)
                 end
             else
                 # these vectors are linearly independent over FF
-                list = detecteigenvectors(pm, m; settings=settings, FF=FF, g=g)
+                list = detecteigenvectors(dm, m; settings=settings, FF=FF, g=g)
             end
             
 
@@ -965,10 +965,10 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         if find_extra_vectors
             # add standard basis vectors at the end
             for i=1:N
-                vexact = zeros(FF, N)
+                vexact = FF.(zeros(Int, N))
                 vexact[i] = FF(1)
                 push!(finalvectors, vexact)
-                v = zeros(AF, N)
+                v = AF.(zeros(Int, N))
                 v[i] = AF(1)
                 push!(float_vecs, v)
             end
@@ -1018,7 +1018,7 @@ function simplify_kernelvectors(dm, finalvectors; FF=QQ, g=1, settings=RoundingS
         extravectors = zero_matrix(FF, N, N-ncols(B))
         j = 1 # we are looking for the j'th extra vector
         for i = 1:N
-            candidate = zeros(AF, N)
+            candidate = AF.(zeros(Int, N))
             candidate[i, 1] = AF(1)
             for v in nlist
                 candidate -= (dot(candidate, v) // dot(v, v)) .* v
@@ -1211,17 +1211,17 @@ function transform(problem::Problem, Bs)
     Problem(problem.maximize, objective, constraints)
 end
 
-function transform(sol::DualSolution{T}, Bs; g=1) where T
+function transform(sol::PrimalSolution{T}, Bs; g=1) where T
     matrixcoeff = Dict{Any,Matrix{T}}()
     for (k, m) in sol.matrixvars
         if Bs[k][3] < size(m, 1)
             matrixcoeff[k] = transform(m, Bs[k][1], Bs[k][3], g=g)
         end
     end
-    DualSolution{T}(sol.base_ring, matrixcoeff, sol.freevars)
+    PrimalSolution{T}(sol.base_ring, matrixcoeff, sol.freevars)
 end
 
-function undo_transform(sol::DualSolution{T}, Bs; FF=QQ) where T
+function undo_transform(sol::PrimalSolution{T}, Bs; FF=QQ) where T
     matrixcoeff = Dict{Any,Matrix{T}}()
     for k in keys(Bs)
         N = size(Bs[k][1], 1)
@@ -1234,7 +1234,7 @@ function undo_transform(sol::DualSolution{T}, Bs; FF=QQ) where T
             matrixcoeff[k] = M
         end
     end
-    DualSolution{T}(sol.base_ring, matrixcoeff, sol.freevars)
+    PrimalSolution{T}(sol.base_ring, matrixcoeff, sol.freevars)
 end
 
 
@@ -1266,22 +1266,22 @@ function convert_system(FF, A, b)
     return Atot, btot
 end
 
-function get_rational_system(problem::Problem, dualsol::DualSolution, FF::QQField, g=1; columns = nothing, monomial_bases=nothing, settings=RoundingSettings(), verbose=true)
+function get_rational_system(problem::Problem, primalsol::PrimalSolution, FF::QQField, g=1; columns = nothing, monomial_bases=nothing, settings=RoundingSettings(), verbose=true)
     # It would be best if linearsystem would return type information
     if isnothing(columns) # take all columns
-        columns = 1:length(vectorize(dualsol))
+        columns = 1:length(vectorize(primalsol))
     end
-    x = vectorize(dualsol)
+    x = vectorize(primalsol)
     x = roundx(x, power=settings.approximation_decimals)
     verbose && print("  Constructing the linear system...")
-    t = @elapsed A, b = partial_linearsystem(problem, as_dual_solution(dualsol, x), columns; monomial_bases=monomial_bases)
+    t = @elapsed A, b = partial_linearsystem(problem, as_primal_solution(primalsol, x), columns; monomial_bases=monomial_bases)
     verbose && println(" ($(t)s)")
 
     return A, b, x, columns
 end
 
 #Here g is a numerical approximation of the generator of FF
-function get_rational_system(problem::Problem, dualsol::DualSolution, FF::AbsSimpleNumField, g; columns=nothing, monomial_bases=nothing, settings=RoundingSettings(), verbose=true)
+function get_rational_system(problem::Problem, primalsol::PrimalSolution, FF::AbsSimpleNumField, g; columns=nothing, monomial_bases=nothing, settings=RoundingSettings(), verbose=true)
     #make sure that g is indeed an approximation of the generator
     p = defining_polynomial(FF)
     val = sum(BigFloat(coeff(p,k)) * g^k for k=0:degree(p))
@@ -1299,7 +1299,7 @@ function get_rational_system(problem::Problem, dualsol::DualSolution, FF::AbsSim
     b = FF.(b)
     nvars = ncols(A)
     A, b = convert_system(FF, A, b)
-    x = vectorize(dualsol)
+    x = vectorize(primalsol)
 
     verbose && print("  Computing an approximate solution in the extension field...")
     t = @elapsed x_rounded = roundx(A, b, x, g, degree(FF), regularization=settings.regularization, prec=Int64(precision(first(x))), power=settings.approximation_decimals)
@@ -1318,7 +1318,7 @@ function xrational_to_field(x, FF)
     # x is the concatenation of x_j, where sum_j=0 x_j * g^j is the value in FF
     g = gen(FF)
     d = degree(FF)
-    x_FF = zeros(FF, div(length(x),d))
+    x_FF = FF.(zeros(Int, div(length(x),d)))
     for k=0:d-1
         x_FF += g^k .* x[length(x_FF)*k+1:length(x_FF)*(k+1)]
     end
@@ -1343,12 +1343,12 @@ end
 # For problems in extremal geometry, many of the kernel vectors come from one or multiple configurations, and this can then be easily automated.
 # We probably need this to round the exact solution for the 12-point codes in S^3, or we need more precision (60-80 bits instead of 40)
 """
-    exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::DualSolution; transformed=false, FF = QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing)
+    exact_solution(problem::Problem, dualsol::DualSolution, primalsol::PrimalSolution; transformed=false, FF = QQ, g=1, settings::RoundingSettings=RoundingSettings(), monomial_bases=nothing)
 
-Compute and return an exact solution to the problem, given a primal solution, dual solution and a field `FF` with approximate generator `g`.
-Return `(success, exactdualsol)` if `transformed=false`, and `(success, pd_transformed_exactsolution, transformations)` if `transformed=true`.
+Compute and return an exact solution to the problem, given a dual solution, primal solution and a field `FF` with approximate generator `g`.
+Return `(success, exactprimalsol)` if `transformed=false`, and `(success, pd_transformed_exactsolution, transformations)` if `transformed=true`.
 """
-function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::DualSolution; 
+function exact_solution(problem::Problem, dualsol::DualSolution, primalsol::PrimalSolution; 
             transformed=false, 
             FF = QQ, g=1, 
             settings::RoundingSettings=RoundingSettings(),
@@ -1356,7 +1356,7 @@ function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::Du
             verbose=true)
     verbose && println("** Starting computation of basis transformations **")
     # print_memory_info()
-    t = @elapsed Bs = basis_transformations(primalsol, dualsol, FF=FF, g=g, settings=settings, verbose=verbose)
+    t = @elapsed Bs = basis_transformations(dualsol, primalsol, FF=FF, g=g, settings=settings, verbose=verbose)
     verbose && println("** Finished computation of basis transformations ($(t)s) **")
     # print_memory_info()
     verbose && print("** Transforming the problem and the solution **")
@@ -1366,8 +1366,8 @@ function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::Du
         @assert length(monomial_bases) == length(constraints(problem)) "Please supply one monomial basis for every constraint."
         length.(monomial_bases) != [length(x.samples) for x in constraints(problem)] && @warn "Some constraints have a different number of basis polynomials than samples."
     end
-    # verbose && print("Transforming dualsol... ")
-    t = @elapsed transformed_dualsol = transform(dualsol,Bs, g=g)
+    # verbose && print("Transforming primalsol... ")
+    t = @elapsed transformed_primalsol = transform(primalsol,Bs, g=g)
     # verbose && println("done ($(t)s)")
     # print_memory_info()
     # verbose && print("Transforming problem... ")
@@ -1375,7 +1375,7 @@ function exact_solution(problem::Problem, primalsol::PrimalSolution, dualsol::Du
     verbose && println(" ($(t)s)")
     # print_memory_info()
 	verbose && println("** Projection the solution into the affine space **")
-    t = @elapsed exact_sol, correct_slacks = project_to_affine_space(transformed_problem, transformed_dualsol, FF=FF, g=g, settings=settings, monomial_bases=monomial_bases, verbose=verbose)
+    t = @elapsed exact_sol, correct_slacks = project_to_affine_space(transformed_problem, transformed_primalsol, FF=FF, g=g, settings=settings, monomial_bases=monomial_bases, verbose=verbose)
 	verbose && println("** Finished projection into affine space ($(t)s) **")
     verbose && println("** Checking feasibility **")
     if !correct_slacks

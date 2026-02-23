@@ -25,8 +25,8 @@ function polyopt(f, d, u)
     sdp = ClusteredLowRankSDP(problem)
     sdp = convert_to_prec(sdp)
     #Solve the SDP and return results
-    status, primalsol, dualsol, time, errorcode = solvesdp(sdp)    
-    return objvalue(problem, dualsol), freevar(dualsol, :lambda), dualsol
+    status, dualsol, primalsol, time, errorcode = solvesdp(sdp)    
+    return objvalue(problem, primalsol), freevar(primalsol, :lambda), primalsol
 end
 
 
@@ -82,8 +82,8 @@ function min_f(d)
     constr = Constraint(f, psd_dict, Dict(:M => 1), samples)
     problem = Problem(Maximize(obj), [constr])
 
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
-    return problem, primalsol, dualsol
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem)
+    return problem, dualsol, primalsol
 end
 
 end # end module

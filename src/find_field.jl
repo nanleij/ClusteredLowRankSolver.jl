@@ -1,9 +1,9 @@
-function select_vals(primalsol::PrimalSolution{T}, dualsol::DualSolution{T}, max_d=10; valbound=1e-15,errbound=1e-15, bits=100, max_coeff=1000, sizebound=10^6) where T
+function select_vals(dualsol::DualSolution{T}, primalsol::PrimalSolution{T}, max_d=10; valbound=1e-15,errbound=1e-15, bits=100, max_coeff=1000, sizebound=10^6) where T
     all_vals = Tuple{T,Int64}[]
-    for (k,m) in primalsol.matrixvars
-        #if the primal solution has large entries, use the eigenvalues (svd) of the dual solution
-        if maximum(abs.(m)) > sizebound  && maximum(abs.(matrixvar(dualsol, k))) < sizebound || true
-            tmp = svd(matrixvar(dualsol, k))
+    for (k,m) in dualsol.matrixvars
+        #if the dual solution has large entries, use the eigenvalues (svd) of the primal solution
+        if maximum(abs.(m)) > sizebound  && maximum(abs.(matrixvar(primalsol, k))) < sizebound || true
+            tmp = svd(matrixvar(primalsol, k))
             num_evs = count(x->abs(x)< valbound, tmp.S)
             if num_evs  == 0 
                 continue
@@ -84,7 +84,7 @@ end
 
 
 """
-    find_field(primalsol, dualsol, max_degree=4; valbound=1e-15, errbound=1e-15, bits=100, max_coeff=1000)
+    find_field(dualsol, primalsol, max_degree=4; valbound=1e-15, errbound=1e-15, bits=100, max_coeff=1000)
 
 Heuristically find a field over which the kernel can probably be defined. 
 
@@ -92,8 +92,8 @@ Only consider values at least `valbound` in absolute value. Find minimal polynom
 such that the chosen entries are approximately generators with an error bound of `errbound`.
 Use `bits` number of bits and reject minimal polynomials with a maximum coefficient of more than `max_coeff`.
 """
-function find_field(primalsol::PrimalSolution{T}, dualsol::DualSolution{T}, max_degree=10; valbound=1e-15,errbound=1e-15, bits=max_degree*100, max_coeff=10^5) where T
-    vals = select_vals(primalsol, dualsol, max_degree;valbound=valbound, errbound=errbound, bits=bits, max_coeff=max_coeff)
+function find_field(dualsol::DualSolution{T}, primalsol::PrimalSolution{T}, max_degree=10; valbound=1e-15,errbound=1e-15, bits=max_degree*100, max_coeff=10^5) where T
+    vals = select_vals(dualsol, primalsol, max_degree;valbound=valbound, errbound=errbound, bits=bits, max_coeff=max_coeff)
     g, d, coeffs, N = find_common_minpoly(vals; max_coeff=max_coeff, errbound=errbound, bits=bits)
     #if Hecke:
     # N, _ = simplify(N)

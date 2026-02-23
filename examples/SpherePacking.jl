@@ -110,8 +110,8 @@ function Nsphere_packing(n,d,r,N=length(r);prec=512, kwargs...)
     obj = Objective(0,Dict(),Dict(:M=>1))
 
     problem = Problem(Minimize(obj),constraints)
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem; prec=prec, kwargs...)
-    return problem, primalsol, dualsol
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem; prec=prec, kwargs...)
+    return problem, dualsol, primalsol
 end
 
 function cohnelkies(n,d,r=1; prec=512, model_prec=prec,  kwargs...)
@@ -180,8 +180,8 @@ function cohnelkies(n,d,r=1; prec=512, model_prec=prec,  kwargs...)
     #NOTE: these numbers become extremely large for large k. So no wonder that solvers have issues with that
 
     problem = Problem(Minimize(obj), [con1,con2])
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem; prec=prec, kwargs...)
-    return problem, primalsol, dualsol
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem; prec=prec, kwargs...)
+    return problem, dualsol, primalsol
 end
 
 end # of module

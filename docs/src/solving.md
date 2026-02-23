@@ -22,14 +22,14 @@ In order of output, we have (where the values are from the start of the iteratio
   - The iteration number
   - The time since the start of the first iteration
   - The complementary gap ``\mu = \langle X, Y \rangle / K`` where ``K`` is the number of rows of ``X``. Here ``X`` and ``Y`` denote the primal and dual solution matrices. The solution will converge to the optimum for ``\mu \to 0``.
-  - The primal objective
   - The dual objective
+  - The primal objective
   - The relative duality gap 
-  - The primal matrix error 
-  - The primal scalar error 
-  - The dual (scalar) error 
-  - The primal step length
+  - The dual matrix error 
+  - The dual scalar error 
+  - The primal (scalar) error 
   - The dual step length
+  - The primal step length
   - ``\beta_c``. The solver tries to reduce ``\mu`` by this factor in this iteration.
 
 An example of the output of the [Example](@ref expolyopt) from polynomial optimization is
@@ -45,12 +45,12 @@ Optimal solution found
  13.860834 seconds (13.74 M allocations: 913.073 MiB, 7.72% gc time, 93.09% compilation time)
  iter  time(s)           μ       P-obj       D-obj        gap    P-error    p-error    d-error        α_p        α_d       beta
 
-Primal objective:-2.112913881423601867325289796075301826150007716044362101360781221096092533872562
-Dual objective:-2.112913881423605414349991239275382883067580432169230529548206052006356176913883
+Dual objective:-2.112913881423601867325289796075301826150007716044362101360781221096092533872562
+Primal objective:-2.112913881423605414349991239275382883067580432169230529548206052006356176913883
 Duality gap:8.393680245626824434313082297089851809408852609517159688543365552836941907249006e-16
 ```
 Note that the first iteration takes long because the functions used by the solver get compiled.
-The function [`solvesdp`](@ref) returns the status of the solutions, the primal and dual solutions, the solve time and an error code (see below).
+The function [`solvesdp`](@ref) returns the status of the solutions, the dual and primal solutions, the solve time and an error code (see below).
 
 ### Status
 When the algorithm finishes due to one of the termination criteria, the status, the final solution together with the objectives, the used time and an error code is returned. The status can be one of

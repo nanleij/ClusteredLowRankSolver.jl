@@ -35,9 +35,9 @@ export SampledMPolyRingElem, SampledMPolyRing, sampled_polynomial_ring
 export model_psd_variables_as_free_variables
 
 
-export PrimalSolution, DualSolution, matrixvar, freevar, slacks, matrixvars, freevars
+export DualSolution, PrimalSolution, matrixvar, freevar, slacks, matrixvars, freevars
 
-export vectorize, as_dual_solution, blocksizes, addconstraint!
+export vectorize, as_primal_solution, blocksizes, addconstraint!
 
 export linearsystem, objvalue, partial_linearsystem
 export RoundingSettings, linearsystem_coefficientmatching

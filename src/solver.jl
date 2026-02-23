@@ -46,17 +46,17 @@ Keyword arguments:
   - `prec` (default: `precision(BigFloat)`): the precision used
   - `gamma` (default: `0.9`): the step length reduction; a maximum step length of α reduces to a step length of `max(gamma*α,1)`
   - `beta_(in)feasible` (default: `0.1` (`0.3`)): the amount mu is tried to be reduced by in each iteration, for (in)feasible solutions
-  - `omega_p/d` (default: `10^10`): the starting matrix variable for the primal/dual is `omega_p/d*I`
+  - `omega_p/d` (default: `10^10`): the starting matrix variable for the dual/primal is `omega_p/d*I`
   - `maxiterations` (default: `500`): the maximum number of iterations
   - `duality_gap_threshold` (default: `10^-15`): how near to optimal the solution needs to be
-  - `primal/dual_error_threshold` (default:`10^-30`): how feasible the primal/dual solution needs to be
+  - `dual/primal_error_threshold` (default:`10^-30`): how feasible the dual/primal solution needs to be
   - `max_complementary_gap` (default: `10^100`): the maximum of `dot(X,Y)/nrows(X)` allowed
-  - `need_primal_feasible/need_dual_feasible` (default: `false`): terminate when the solution is primal/dual feasible
+  - `need_dual_feasible/need_primal_feasible` (default: `false`): terminate when the solution is dual/primal feasible
   - `verbose` (default: `true`): print information after every iteration if true
   - `step_length_threshold` (default: `10^-7`): the minimum step length allowed
-  - `primalsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
-  - `dualsol` (default: `nothing`): start from the solution `(primalsol, dualsol)` if both `primalsol` and `dualsol` are given
-  - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is primal and dual feasible
+  - `dualsol` (default: `nothing`): start from the solution `(dualsol, primalsol)` if both `dualsol` and `primalsol` are given
+  - `primalsol` (default: `nothing`): start from the solution `(dualsol, primalsol)` if both `dualsol` and `primalsol` are given
+  - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is dual and primal feasible
   - `save_settings` (default: SaveSettings(), not saved): use the SaveSettings to determine whether and how often the iterates are saved during the algorithm. 
 """
 function solvesdp(
@@ -67,18 +67,18 @@ function solvesdp(
     # beta_infeasible=3//10, # try to decrease mu by this factor when infeasible
     # beta_feasible = 1//10, # try to decrease mu by this factor when feasible
     # gamma=9//10, # this fraction of the maximum possible step size is used
-    # omega_p=big(10)^(10), # initial size of the primal PSD variables #TODO: define one omega to be the same as the other?
-    # omega_d=big(10)^(10), # initial size of the dual PSD variables
+    # omega_p=big(10)^(10), # initial size of the dual PSD variables #TODO: define one omega to be the same as the other?
+    # omega_d=big(10)^(10), # initial size of the primal PSD variables
     # duality_gap_threshold=1e-15, # how near to optimal does the solution need to be
-    # primal_error_threshold=1e-30,  # how feasible does the primal solution need to be
-    # dual_error_threshold=1e-30, # how feasible does the dual solution need to be
+    # dual_error_threshold=1e-30,  # how feasible does the dual solution need to be
+    # primal_error_threshold=1e-30, # how feasible does the primal solution need to be
     # max_complementary_gap=big(10)^100, # the maximum of <X,Y>/#rows(X)
-    # need_primal_feasible=false, # terminate when the solution is primal feasible
     # need_dual_feasible=false, # terminate when the solution is dual feasible
+    # need_primal_feasible=false, # terminate when the solution is primal feasible
     # verbose = true, # false: print nothing, true: print information after each iteration
     # step_length_threshold=1e-7, # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
-    # primalsol::Union{Nothing,PrimalSolution}=nothing,
     # dualsol::Union{Nothing,DualSolution}=nothing,
+    # primalsol::Union{Nothing,PrimalSolution}=nothing,
     # correctoronly=false,
     # #experimental & testing:
     # matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
@@ -96,18 +96,18 @@ function solvesdp(
     beta_infeasible=3//10, # try to decrease mu by this factor when infeasible
     beta_feasible = 1//10, # try to decrease mu by this factor when feasible
     gamma=9//10, # this fraction of the maximum possible step size is used
-    omega_p=big(10)^(10), # initial size of the primal PSD variables #TODO: define one omega to be the same as the other?
-    omega_d=big(10)^(10), # initial size of the dual PSD variables
+    omega_p=big(10)^(10), # initial size of the dual PSD variables #TODO: define one omega to be the same as the other?
+    omega_d=big(10)^(10), # initial size of the primal PSD variables
     duality_gap_threshold=1e-15, # how near to optimal does the solution need to be
-    primal_error_threshold=1e-30,  # how feasible does the primal solution need to be
-    dual_error_threshold=1e-30, # how feasible does the dual solution need to be
+    dual_error_threshold=1e-30,  # how feasible does the dual solution need to be
+    primal_error_threshold=1e-30, # how feasible does the primal solution need to be
     max_complementary_gap=big(10)^100, # the maximum of <X,Y>/#rows(X)
-    need_primal_feasible=false, # terminate when the solution is primal feasible
     need_dual_feasible=false, # terminate when the solution is dual feasible
+    need_primal_feasible=false, # terminate when the solution is primal feasible
     verbose = true, # false: print nothing, true: print information after each iteration
     step_length_threshold=1e-7, # quit if the one of the step lengths is shorter than this, indicating precision errors or infeasibility
-    primalsol::Union{Nothing,PrimalSolution}=nothing,
     dualsol::Union{Nothing,DualSolution}=nothing,
+    primalsol::Union{Nothing,PrimalSolution}=nothing,
     safe_step::Bool=true,
     correctoronly=false,
     save_settings::SaveSettings=SaveSettings(),
@@ -125,19 +125,19 @@ function solvesdp(
 	# which might make it easier to read.
 
     # convert to Arbs & the required precision:
-    omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, primal_error_threshold, dual_error_threshold =
-        AL.Arb.([omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, primal_error_threshold, dual_error_threshold], prec=prec)
+    omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, dual_error_threshold, primal_error_threshold =
+        AL.Arb.([omega_p, omega_d, gamma, beta_feasible, beta_infeasible, duality_gap_threshold, dual_error_threshold, primal_error_threshold], prec=prec)
     # The algorithm:
     # initialize:
         # 1): choose initial point q = (0, Ω_p*I, 0, Ω_d*I) = (x,X,y,Y), with Ω>0
     # main loop:
         # 2): compute residues  P = ∑_i A_i x_i - X - C, p = b -B^Tx, d = c- <A_* Y> - By and R = μI - XY
-        # 3): Take μ = <X,Y>/K, and μ_p = beta_p μ with beta_p = 0 if q is primal & dual feasible, beta_infeasible otherwise
+        # 3): Take μ = <X,Y>/K, and μ_p = beta_p μ with beta_p = 0 if q is dual & primal feasible, beta_infeasible otherwise
         # 4): solve the system for the search direction (dx,dX, dy,dY), with R = μ_p I - XY
         # 5): compute corrector deformation μ_c = beta_c μ:
             # r = <(X+dX),(Y+dY)>/(μK)
             # beta = r^2 if r<1, r otherwise
-            # beta_c = min( max( beta_feasible, beta),1) if primal & dual feasible, max(beta_infeasible,beta) otherwise
+            # beta_c = min( max( beta_feasible, beta),1) if dual & primal feasible, max(beta_infeasible,beta) otherwise
         # 6): solve the system for the search direction (dx,dX, dy,dY), with R = μ_c I - XY
         # 7): compute step lengths: α_p = min(γ α(X,dX),1), α_d = min(γ α(Y,dY),1)
             # with α(M,dM) =  max(0, -eigmin(M)/eigmin(dM)) ( = 0 if eigmin(dM)> 0).
@@ -178,8 +178,8 @@ function solvesdp(
         Arblib.one!(Y.blocks[j].blocks[l])
         Arblib.mul!(Y.blocks[j].blocks[l],Y.blocks[j].blocks[l], omega_d)
     end
-    if !isnothing(primalsol) && !isnothing(dualsol)
-        x = ArbRefMatrix(primalsol.x, prec=prec)
+    if !isnothing(dualsol) && !isnothing(primalsol)
+        x = ArbRefMatrix(dualsol.x, prec=prec)
         Arblib.get_mid!(x, x)
         for j in eachindex(sdp.matrix_coeff_names)
             for k in eachindex(sdp.matrix_coeff_names[j])
@@ -191,11 +191,11 @@ function solvesdp(
                     if r == 1 && s == 1 && !(bl in sdp.matrix_coeff_blocks)
                         bl = sdp.matrix_coeff_names[j][k]
                     end
-                    if !isnothing(primalsol)
-                        X.blocks[j].blocks[k][hs, vs] = primalsol.matrixvars[bl]
-                    end
                     if !isnothing(dualsol)
-                        Y.blocks[j].blocks[k][hs, vs] = dualsol.matrixvars[bl]
+                        X.blocks[j].blocks[k][hs, vs] = dualsol.matrixvars[bl]
+                    end
+                    if !isnothing(primalsol)
+                        Y.blocks[j].blocks[k][hs, vs] = primalsol.matrixvars[bl]
                     end
                 end
             end
@@ -206,7 +206,7 @@ function solvesdp(
         end
 
         for (i,k) in enumerate(sdp.free_coeff_names)
-            y[i] = dualsol.freevars[k]
+            y[i] = primalsol.freevars[k]
         end
         Arblib.get_mid!(y,y)
     end
@@ -289,20 +289,20 @@ function solvesdp(
     Q = ArbRefMatrix(size(sdp.b,1),size(sdp.b,1), prec=prec)
     tempX = [similar(X),similar(X)] # we need this scratch space several times each iteration
     #errors and feasibility
-    p_obj = compute_primal_objective(sdp, x)
-    d_obj = compute_dual_objective(sdp, y, Y)
+    d_obj = compute_dual_objective(sdp, x)
+    p_obj = compute_primal_objective(sdp, y, Y)
     dual_gap = compute_duality_gap(sdp, x, y, Y)
     time_res = @elapsed begin
         #goes wrong here (probably due to improper window or something like that)
         compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
     end
-    primal_error = compute_primal_error(P, p)
-    dual_error = compute_dual_error(d)
+    dual_error = compute_dual_error(P, p)
+    primal_error = compute_primal_error(d)
     pd_feas = check_pd_feasibility(
-        primal_error,
         dual_error,
-        primal_error_threshold,
+        primal_error,
         dual_error_threshold,
+        primal_error_threshold,
     )
     error_code = [0] #success
 
@@ -321,13 +321,13 @@ function solvesdp(
     @time while (
         !terminate(
             dual_gap,
-            primal_error,
             dual_error,
+            primal_error,
             duality_gap_threshold,
-            primal_error_threshold,
             dual_error_threshold,
-            need_primal_feasible,
+            primal_error_threshold,
             need_dual_feasible,
+            need_primal_feasible,
             correctoronly,
             verbose
         )
@@ -410,13 +410,13 @@ function solvesdp(
         time_R += @elapsed begin
             compute_residual_R!(R, X, Y, mu_c, dX, dY, tempX, threadinginfo)
         end
-		primal_error = compute_primal_error(P, p)
-		dual_error = compute_dual_error(d)
+		dual_error = compute_dual_error(P, p)
+		primal_error = compute_primal_error(d)
 		pd_feas = check_pd_feasibility(
-            primal_error,
             dual_error,
-            primal_error_threshold,
-            dual_error_threshold)
+            primal_error,
+            dual_error_threshold,
+            primal_error_threshold)
 
 
         # Compute the corrector search direction
@@ -447,7 +447,7 @@ function solvesdp(
             break
         else
             # The steplengths are long enough, so we update the variables.
-            # if the current solution is primal ánd dual feasible, we follow the search direction exactly.
+            # if the current solution is dual ánd primal feasible, we follow the search direction exactly.
             # (this follows the code for SDPB)
             if pd_feas && safe_step
                 alpha_p = min(alpha_p, alpha_d)
@@ -483,8 +483,8 @@ function solvesdp(
                 save_count += 1
                 save_name = replace(save_settings.save_name, "#" => save_count) * ".jls"
             end
-            primalsol, dualsol = solution_to_bigfloat(X, x, Y, y, sdp)
-            serialize(save_name, (primalsol, dualsol))
+            dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
+            serialize(save_name, (dualsol, primalsol))
             save_now = false
         end
 
@@ -531,8 +531,8 @@ function solvesdp(
                 iter,
                 time() - time_start,
                 BigFloat(mu),
-                BigFloat(p_obj),
                 BigFloat(d_obj),
+                BigFloat(p_obj),
                 BigFloat(dual_gap),
                 BigFloat(compute_error(P)),
                 BigFloat(compute_error(p)),
@@ -545,9 +545,9 @@ function solvesdp(
 
         # Compute the new objectives, for the new iteration
         allocs[6]+= @allocated begin
-            p_obj = compute_primal_objective(sdp, x)
-            d_obj = compute_dual_objective(sdp,y, Y)
-            dual_gap = compute_duality_gap(p_obj, d_obj)
+            d_obj = compute_dual_objective(sdp, x)
+            p_obj = compute_primal_objective(sdp,y, Y)
+            dual_gap = compute_duality_gap(d_obj, p_obj)
         end #of allocs
 
 
@@ -578,12 +578,12 @@ function solvesdp(
     end #of try/catch
     time_total = time() - time_start #this may include compile time
 
-    p_obj = compute_primal_objective(sdp, x)
-    d_obj = compute_dual_objective(sdp,y, Y)
-    dual_gap = compute_duality_gap(p_obj, d_obj)
-    primalobj = BigFloat(p_obj)
-    dualobj = BigFloat(d_obj)  
-    primalsol, dualsol = solution_to_bigfloat(X, x, Y, y, sdp)
+    d_obj = compute_dual_objective(sdp, x)
+    p_obj = compute_primal_objective(sdp,y, Y)
+    dual_gap = compute_duality_gap(d_obj, p_obj)
+    dualobj = BigFloat(d_obj)
+    primalobj = BigFloat(p_obj)  
+    dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
 
     if !isnothing(save_settings.time_interval) || (!isnothing(save_settings.iter_interval) && last_save_iteration != save_iteration_count)
         # most probably not just saved
@@ -593,7 +593,7 @@ function solvesdp(
             save_count += 1
             save_name = replace(save_settings.save_name, "#" => save_count) * ".jls"
         end
-        serialize(save_name, (primalsol, dualsol))
+        serialize(save_name, (dualsol, primalsol))
     end
 
 
@@ -668,9 +668,9 @@ function solvesdp(
             )
             @printf("%11.4e %11.4e %11.4e %11.4e %11.4e %11.4e\n\n", allocs...)
         end
-		println("\nPrimal objective:", primalobj)
-		println("Dual objective:", dualobj)
-		println("Duality gap:", BigFloat(dual_gap))
+		println("\nDual objective:", dualobj)
+		println("Primal objective:", primalobj)
+		println("duality gap:", BigFloat(dual_gap))
 
     end
 
@@ -679,20 +679,20 @@ function solvesdp(
     if pd_feas && dual_gap < duality_gap_threshold
         # optimal
         status = Optimal()
-    elseif (pd_feas && dual_gap < 10^-8) || (primal_error < 10^-15 && dual_error < 10^-15 && dual_gap < 10^-8)
+    elseif (pd_feas && dual_gap < 10^-8) || (dual_error < 10^-15 && primal_error < 10^-15 && dual_gap < 10^-8)
         # How do we define near optimal? Maybe we should remove this
         status = NearOptimal()
     elseif pd_feas
         status = Feasible()
-    elseif dual_error < dual_error_threshold && !pd_feas
-        status = DualFeasible()
     elseif primal_error < primal_error_threshold && !pd_feas
         status = PrimalFeasible()
+    elseif dual_error < dual_error_threshold && !pd_feas
+        status = DualFeasible()
     else
         status = NotConverged()
     end
 
-    status, primalsol, dualsol, time_total, error_code[1]
+    status, dualsol, primalsol, time_total, error_code[1]
 end
 
 function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
@@ -702,7 +702,7 @@ function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
     y = BigFloat.(y_var[:,1])
 
 	matrixvars = Dict{Any,Matrix{BigFloat}}()
-    matrixvars_primal = Dict{Any,Matrix{BigFloat}}()
+    matrixvars_dual = Dict{Any,Matrix{BigFloat}}()
 
     # we assume that subblocks are all of the same size
     for j in eachindex(sdp.matrix_coeff_names)
@@ -720,7 +720,7 @@ function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
                     bl = sdp.matrix_coeff_names[j][k]
                 end
                 matrixvars[bl] = Y.blocks[j].blocks[k][hs, vs]
-                matrixvars_primal[bl] = X.blocks[j].blocks[k][hs, vs]
+                matrixvars_dual[bl] = X.blocks[j].blocks[k][hs, vs]
             end
         end
     end
@@ -736,13 +736,13 @@ function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
         push!(x_orig[j], x[idx])
     end
 
-	dualsol = DualSolution{BigFloat}(BigFloat, matrixvars, freevars)
-	primalsol = PrimalSolution{BigFloat}(BigFloat, x_orig, matrixvars_primal)
-    return primalsol, dualsol
+	primalsol = PrimalSolution{BigFloat}(BigFloat, matrixvars, freevars)
+	dualsol = DualSolution{BigFloat}(BigFloat, x_orig, matrixvars_dual)
+    return dualsol, primalsol
 end
 
-"""Compute the primal objective <c, x> + constant"""
-function compute_primal_objective(sdp, x)
+"""Compute the dual objective <c, x> + constant"""
+function compute_dual_objective(sdp, x)
     if sdp.maximize
         return dot_c(sdp, x) + sdp.constant
     else
@@ -750,8 +750,8 @@ function compute_primal_objective(sdp, x)
     end
 end
 
-"""Compute the dual objective <C,Y> + <b,y> + constant"""
-function compute_dual_objective(sdp, y, Y)
+"""Compute the primal objective <C,Y> + <b,y> + constant"""
+function compute_primal_objective(sdp, y, Y)
     return dot(sdp.C, Y) + dot(sdp.b, y) + sdp.constant
 end
 
@@ -776,26 +776,26 @@ function compute_error(d::ArbRefMatrix)
     return max_d
 end
 
-"""Compute the primal error"""
-function compute_primal_error(P, p)
+"""Compute the dual error"""
+function compute_dual_error(P, p)
     max_p = compute_error(p)
     max_P = compute_error(P)
     return Arblib.max!(max_p, max_p, max_P)
 end
 
-"""Compute the dual error"""
-compute_dual_error(d) = compute_error(d)
+"""Compute the primal error"""
+compute_primal_error(d) = compute_error(d)
 
-"""Compute the duality gap (primal_obj - dual_obj)/max{1, |primal_obj+dual_obj|}"""
+"""Compute the duality gap (dual_obj - primal_obj)/max{1, |dual_obj+primal_obj|}"""
 function compute_duality_gap(sdp, x, y, Y)
-    primal_objective = compute_primal_objective(sdp,x)
-    dual_objective = compute_dual_objective(sdp,y,Y)
-    return compute_duality_gap(primal_objective, dual_objective)
+    dual_objective = compute_dual_objective(sdp,x)
+    primal_objective = compute_primal_objective(sdp,y,Y)
+    return compute_duality_gap(dual_objective, primal_objective)
 end
 
-function compute_duality_gap(primal_objective, dual_objective)
-    return abs(primal_objective - dual_objective) /
-           max(one(primal_objective), abs(primal_objective + dual_objective))
+function compute_duality_gap(dual_objective, primal_objective)
+    return abs(dual_objective - primal_objective) /
+           max(one(dual_objective), abs(dual_objective + primal_objective))
 end
 
 """Compute <c,x> where c is distributed over constraints"""
@@ -811,7 +811,7 @@ function dot_c(sdp, x)
     return res
 end
 
-"""Compute the dual residue d = c - <A_*, Y> - By"""
+"""Compute the primal residue d = c - <A_*, Y> - By"""
 function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ranks)
     cur_idx = 0
     w = ArbRefMatrix(0, 0, prec=precision(y))
@@ -831,8 +831,7 @@ function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ra
 end
 
 """Compute the residuals P,p and d."""
-function
-compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pairings,rightvecs_pairings,high_ranks)
+function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pairings,rightvecs_pairings,high_ranks)
     # P = ∑_i x_i A_i - X - C, (+ C if we are minimizing)
     compute_weighted_A!(P, sdp, x,leftvecs_pairings,high_ranks)
     Threads.@threads for (j,l) in threadinginfo.jl_order
@@ -872,41 +871,41 @@ end
 
 """Determine whether the main loop should terminate or not"""
 function terminate(duality_gap,
-    	primal_error,
     	dual_error,
+    	primal_error,
     	duality_gap_threshold,
-    	primal_error_threshold,
     	dual_error_threshold,
-    	need_primal_feasible,
+    	primal_error_threshold,
     	need_dual_feasible,
+    	need_primal_feasible,
     	correctoronly,
         verbose)
-    #NOTE: We might also need termination criteria for when the problem is infeasible. e.g. a too large primal/dual objective
+    #NOTE: We might also need termination criteria for when the problem is infeasible. e.g. a too large dual/primal objective
     # We convert to BigFloats to avoid unexpected results due to large error bounds.
     # This is (probably) only important when increasing the precision during the solving, or not at all
     duality_gap_opt = BigFloat(duality_gap) < BigFloat(duality_gap_threshold)
-    primal_feas = BigFloat(primal_error) < BigFloat(primal_error_threshold)
     dual_feas = BigFloat(dual_error) < BigFloat(dual_error_threshold)
-    if need_primal_feasible && primal_feas
-        verbose && println("Primal feasible solution found")
-        return true
-    end
+    primal_feas = BigFloat(primal_error) < BigFloat(primal_error_threshold)
     if need_dual_feasible && dual_feas
         verbose && println("Dual feasible solution found")
         return true
     end
-    if !correctoronly && primal_feas && dual_feas && duality_gap_opt
+    if need_primal_feasible && primal_feas
+        verbose && println("Primal feasible solution found")
+        return true
+    end
+    if !correctoronly && dual_feas && primal_feas && duality_gap_opt
         verbose && println("Optimal solution found")
         return true
     end
     return false
 end
 
-"""Check primal and dual feasibility"""
-function check_pd_feasibility(primal_error, dual_error, primal_error_threshold, dual_error_threshold)
-    primal_feas = primal_error < primal_error_threshold
+"""Check dual and primal feasibility"""
+function check_pd_feasibility(dual_error, primal_error, dual_error_threshold, primal_error_threshold)
     dual_feas = dual_error < dual_error_threshold
-    return primal_feas && dual_feas
+    primal_feas = primal_error < primal_error_threshold
+    return dual_feas && primal_feas
 end
 
 
