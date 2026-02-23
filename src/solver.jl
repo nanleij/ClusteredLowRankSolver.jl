@@ -582,7 +582,7 @@ function solvesdp(
     d_obj = compute_dual_objective(sdp,y, Y)
     dual_gap = compute_duality_gap(p_obj, d_obj)
     primalobj = BigFloat(p_obj)
-    dualobj = BigFloat(d_obj)
+    dualobj = BigFloat(d_obj)  
     primalsol, dualsol = solution_to_bigfloat(X, x, Y, y, sdp)
 
     if !isnothing(save_settings.time_interval) || (!isnothing(save_settings.iter_interval) && last_save_iteration != save_iteration_count)
@@ -729,8 +729,15 @@ function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
         name = sdp.free_coeff_names[j]
         freevars[name] = y[j]
     end
+    constraint_indices = sort(collect(keys(sdp.order_c)))
+    x_orig = [BigFloat[] for i=1:constraint_indices[end][1]]
+    for (j,l) in constraint_indices
+        idx = sdp.order_c[(j,l)]
+        push!(x_orig[j], x[idx])
+    end
+
 	dualsol = DualSolution{BigFloat}(BigFloat, matrixvars, freevars)
-	primalsol = PrimalSolution{BigFloat}(BigFloat, x, matrixvars_primal)
+	primalsol = PrimalSolution{BigFloat}(BigFloat, x_orig, matrixvars_primal)
     return primalsol, dualsol
 end
 

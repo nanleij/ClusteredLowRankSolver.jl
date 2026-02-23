@@ -815,13 +815,22 @@ struct ClusteredLowRankSDP
     matrix_coeff_names::Vector{Vector{Any}}                 # the (user defined) names of the blocks
     free_coeff_names::Vector{Any}                           # the (user defined) names of the free variables
     matrix_coeff_blocks::Vector{Vector{Tuple{Bool, Int}}}   # whether the user used Block and the number of subblocks 
+    order_c::Dict{Tuple{Int, Int}, Int}         # a map from the (constraintindex, sampleindex) from the problem  to (clusterindex, constraintindex_in_cluster) 
 end
 
 function ClusteredLowRankSDP(maximize, constant, A, B, c, C, b)
     matrixcoeff_names = [[(j,l) for l in eachindex(A[j])] for j in eachindex(A)]
     freecoeff_names = collect(1:size(b,1))
     matrix_coeff_blocks = [[(false, 1) for l in block] for block in A]
-    ClusteredLowRankSDP(maximize, constant, A, B, c, C, b, matrixcoeff_names, freecoeff_names,matrix_coeff_blocks)
+    order_c = Dict{Tuple{Int, Int}, Int}()
+    k = 1
+    for j in eachindex(c)
+        for l in eachindex(c[l])
+            order_c[(k, 1)] = k
+            k+=1
+        end
+    end
+    ClusteredLowRankSDP(maximize, constant, A, B, c, C, b, matrixcoeff_names, freecoeff_names,matrix_coeff_blocks, order_c)
 end
 
 """
@@ -1008,9 +1017,17 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     freecoefflabels = []
     for constraint in sos.constraints
         #We want an ordering for B and b; consistent over multiple runs
-        append!(freecoefflabels, sort(collect(keys(constraint.freecoeff)), by=hash))
+        append!(freecoefflabels, collect(keys(constraint.freecoeff)))
+    end
+    notconstrained = [k for k in keys(sos.objective.freecoeff) if !(k in freecoefflabels)]
+    if length(notconstrained) > 0
+        @warn "There are unconstrained variables in the objective: $notconstrained. Removing the variables."
+        for v in notconstrained
+            delete!(sos.objective.freecoeff, v)
+        end
     end
     unique!(freecoefflabels) 
+    sort!(freecoefflabels, by=hash)
     freecoefflabels_dict = Dict(k=>i for (i,k) in enumerate(freecoefflabels))
 
     # B is a vector of the matrices B^j
@@ -1032,12 +1049,23 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     end
     verbose && println("Sampling the constants...")
     c = [ArbRefMatrix([sampleevaluate(sos.constraints[constraintindex].scalings[s_idx]*sos.constraints[constraintindex].constant,sample) for constraintindex in constraintindices for (s_idx,sample) in enumerate(sos.constraints[constraintindex].samples)],prec=prec) for constraintindices in cluster_constraint_index]
+    
+    order_c = Dict{Tuple{Int, Int}, Int}()# given (constraintindex, sampleindex), what is the (cluster, constraintindex) in the sdp?
+    l = 1
+    for (j, constraintindices) in enumerate(cluster_constraint_index) 
+        for (i,constraintindex) in enumerate(constraintindices) 
+            for k in eachindex(sos.constraints[constraintindex].samples)
+                order_c[(constraintindex, k)] = l
+                l+=1
+            end
+        end
+    end
 
     b = ArbRefMatrix(length(freecoefflabels),1,prec=prec)
     for (k,v) in sos.objective.freecoeff
         b[freecoefflabels_dict[k]] = Arb(v, prec=prec)
     end
-    ClusteredLowRankSDP(sos.maximize, Arb(sos.objective.constant,prec=prec), A, B, c, C_block, b, matrix_coeff_names,freecoefflabels, matrix_coeff_blocks)
+    ClusteredLowRankSDP(sos.maximize, Arb(sos.objective.constant,prec=prec), A, B, c, C_block, b, matrix_coeff_names,freecoefflabels, matrix_coeff_blocks, order_c)
 end
 
 """
@@ -1078,7 +1106,7 @@ function convert_to_prec(sdp::ClusteredLowRankSDP,prec=precision(BigFloat))
     new_b = ArbRefMatrix(sdp.b, prec=prec)
     Arblib.get_mid!(new_b, new_b)
 
-    return ClusteredLowRankSDP(sdp.maximize,new_constant,new_A,new_B,new_c,new_C,new_b,sdp.matrix_coeff_names,sdp.free_coeff_names, sdp.matrix_coeff_blocks)
+    return ClusteredLowRankSDP(sdp.maximize,new_constant,new_A,new_B,new_c,new_C,new_b,sdp.matrix_coeff_names,sdp.free_coeff_names, sdp.matrix_coeff_blocks, sdp.order_c)
 end
 
 ######################
@@ -1114,12 +1142,12 @@ Base.show(io::IO, x::Status) = @printf(io,"NOINFO")
 
 A primal solution to the semidefinite program, with fields
   - `base_ring`
-  - `x::Vector{T}`
-  - `matrixvars::Dict{Any, Matrix{T}}`
+  - `x::Vector{Vector{T}}`  -- The dual variables to the constraints. Indexed by [constraintindex][sampleindex]
+  - `matrixvars::Dict{Any, Matrix{T}}` -- The dual variables to the PSD constraints on the matrices
 """
 struct PrimalSolution{T}
     base_ring
-    x::Vector{T}
+    x::Vector{Vector{T}}
     matrixvars::Dict{Any,Matrix{T}} 
 end
 

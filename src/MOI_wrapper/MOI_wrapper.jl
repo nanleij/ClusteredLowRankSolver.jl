@@ -208,14 +208,10 @@ function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
             k+=1
         end
     end
-    @show index_map
-    @show dest.variable_map
-
     # make the constraints
     cons = []
     k = 1
     for (F, S) in MOI.get(src, MOI.ListOfConstraintTypesPresent())
-        @show F, S
         if S <: _SupportedSets
             continue # constrainted on creation
         end
@@ -404,7 +400,7 @@ function MOI.optimize!(opt::Optimizer)
     opt.result_data[:errorcode] = e
     opt.result_data[MOI.SolveTimeSec()] = t
     opt.result_data[MOI.ObjectiveValue()] = objvalue(pr, dualsol)
-    opt.result_data[MOI.DualObjectiveValue()] = pr.objective.constant + (-1)^(!pr.maximize) * sum(primalsol.x[i] * pr.constraints[i].constant for i in eachindex(primalsol.x))
+    opt.result_data[MOI.DualObjectiveValue()] = pr.objective.constant + (-1)^(!pr.maximize) * sum(primalsol.x[i][1] * pr.constraints[i].constant for i in eachindex(primalsol.x))
     return 
 end
 
@@ -419,10 +415,10 @@ end
 # ResultCount
 # TerminationStatus
 
-function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
+function MOI.get(opt::Optimizer, attr::MOI.PrimalStatus)
     #NOTE: Primal and dual are switched in ClusteredLowRankSolver
     # result: ::MOI.ResultStatusCode
-    if !opt.optimized
+    if !opt.optimized || attr.result_index > 1
         return MOI.NO_SOLUTION
     end
     status = opt.result_data[:status]
@@ -434,9 +430,9 @@ function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
         return MOI.INFEASIBLE_POINT
     end
 end
-function MOI.get(opt::Optimizer, ::MOI.DualStatus)
+function MOI.get(opt::Optimizer, attr::MOI.DualStatus)
     # result: ::MOI.ResultStatusCode
-    if !opt.optimized
+    if !opt.optimized || attr.result_index > 1
         return MOI.NO_SOLUTION
     end
     status = opt.result_data[:status]
@@ -455,6 +451,13 @@ function MOI.get(opt::Optimizer, ::MOI.RawStatusString)
     return string(opt.result_data[:status])
     # result: MOI.String
 end
+
+
+function MOI.get(opt::Optimizer, attr::Union{MOI.ObjectiveValue, MOI.DualObjectiveValue})
+    MOI.check_result_index_bounds(opt, attr)
+    return opt.result_data[attr]
+end
+
 function MOI.get(opt::Optimizer, ::MOI.TerminationStatus)
     if !opt.optimized
         return MOI.OPTIMIZE_NOT_CALLED
@@ -465,9 +468,23 @@ function MOI.get(opt::Optimizer, ::MOI.TerminationStatus)
         return MOI.OPTIMAL
     elseif e == 2
         return MOI.ITERATION_LIMIT
-    elseif e == 3
+    elseif e == 3 # infeasible or unbounded because large duality gap
+        if abs(MOI.get(opt, MOI.ObjectiveValue())) > 1e30 && !(status isa PrimalFeasible) && !(status isa NearOptimal) && !(status isa Feasible)
+            # probably unbounded
+            return MOI.DUAL_INFEASIBLE
+        elseif abs(MOI.get(opt, MOI.DualObjectiveValue())) > 1e30 && !(status isa DualFeasible) && !(status isa NearOptimal) && !(status isa Feasible)
+            #probably infeasible
+            return MOI.INFEASIBLE
+        end
         return MOI.INFEASIBLE_OR_UNBOUNDED
-    elseif e == 4
+    elseif e == 4 #small step length, so probably not primal-dual feasible?
+        if abs(MOI.get(opt, MOI.ObjectiveValue())) > 1e30 && !(status isa PrimalFeasible) && !(status isa NearOptimal) && !(status isa Feasible)
+            # probably unbounded
+            return MOI.DUAL_INFEASIBLE
+        elseif abs(MOI.get(opt, MOI.DualObjectiveValue())) > 1e30 && !(status isa DualFeasible) && !(status isa NearOptimal) && !(status isa Feasible)
+            #probably infeasible
+            return MOI.INFEASIBLE
+        end
         return MOI.SLOW_PROGRESS
     elseif e == 1
         # we don't distinguish between numerical errors and interrupt
@@ -486,10 +503,6 @@ end
 # VariablePrimalStart
 # VariableDualStart
 
-function MOI.get(opt::Optimizer, attr::Union{MOI.ObjectiveValue, MOI.DualObjectiveValue})
-    MOI.check_result_index_bounds(opt, attr)
-    return opt.result_data[attr]
-end
 function MOI.get(opt::Optimizer, attr::MOI.SolveTimeSec)
     if opt.optimized
         return opt.result_data[attr]
@@ -515,7 +528,7 @@ end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintDual, ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{T}, MOI.EqualTo{T}}) where T<:Real
     MOI.check_result_index_bounds(opt, attr)
-    return opt.primalsol.x[ci.value]
+    return -opt.primalsol.x[ci.value][1]
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintDual, ci::MOI.ConstraintIndex{MOI.VectorOfVariables, MOI.Nonnegatives})
@@ -541,14 +554,15 @@ function MOI.get(opt::Optimizer, attr::MOI.ConstraintPrimal, ci::MOI.ConstraintI
     MOI.check_result_index_bounds(opt, attr)
     blk, i, j = opt.variable_map[ci.value]
     blkdim = opt.block_dims[blk]
-    return [opt.primalsol.matrixvars[blk][i,j] for i=1:blkdim for j=1:i]
+    return [opt.dualsol.matrixvars[blk][i,j] for j=1:blkdim for i=1:j]
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintPrimal, ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{T}, MOI.EqualTo{T}}) where T<:Real
     MOI.check_result_index_bounds(opt, attr)
-    # find the value of b-<A, X>
+    # find the value of <A, X>
     con = opt.problem.constraints[ci.value] 
-    return T(con.constant) - sum(dot(con.matrixcoeff[k], opt.dualsol.matrixvars[k]) for k in eachindex(con.matrixcoeff)) - sum(con.freecoeff[k] * opt.dualsol.freevars[k] for k in eachindex(con.freecoeff))
+    return (sum(dot(con.matrixcoeff[k], opt.dualsol.matrixvars[k]) for k in eachindex(con.matrixcoeff); init=T(0))
+        + sum(con.freecoeff[k] * opt.dualsol.freevars[k] for k in eachindex(con.freecoeff); init=T(0)))
 end
 
 
