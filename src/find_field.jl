@@ -1,8 +1,8 @@
 function select_vals(dualsol::DualSolution{T}, primalsol::PrimalSolution{T}, max_d=10; valbound=1e-15,errbound=1e-15, bits=100, max_coeff=1000, sizebound=10^6) where T
     all_vals = Tuple{T,Int64}[]
     for (k,m) in dualsol.matrixvars
-        #if the dual solution has large entries, use the eigenvalues (svd) of the primal solution
-        if maximum(abs.(m)) > sizebound  && maximum(abs.(matrixvar(primalsol, k))) < sizebound || true
+        #if the dual solution has large entries, use the eigenvectors (svd) of the primal solution
+        if maximum(abs.(m)) > sizebound  && maximum(abs.(matrixvar(primalsol, k))) < sizebound 
             tmp = svd(matrixvar(primalsol, k))
             num_evs = count(x->abs(x)< valbound, tmp.S)
             if num_evs  == 0 
@@ -13,7 +13,6 @@ function select_vals(dualsol::DualSolution{T}, primalsol::PrimalSolution{T}, max
         m = RowEchelon.rref!(copy(m), valbound)
         vecs = [m[i, :] for i in axes(m,1) if norm(m[i, :]) > valbound]
         if length(vecs) == 0
-            @show "$k has no kernelvectors without 0-1 entries"
             continue
         end
         idxs = [findfirst(x->abs(x)>valbound, v[length(vecs)+1:end]) for v in vecs]

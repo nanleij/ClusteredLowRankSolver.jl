@@ -100,8 +100,8 @@ Now we can formulate the constraint and solve the problem:
     constr = Constraint(f, psd_dict, Dict(:M => 1), samples)
     problem = Problem(Maximize(obj), [constr])
 
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
-    return objvalue(problem, dualsol)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem)
+    return objvalue(problem, primalsol)
 end
 
 min_f(2)

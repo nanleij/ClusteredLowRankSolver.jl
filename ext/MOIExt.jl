@@ -1,4 +1,14 @@
+module MOIExt
+# MOI wrapper
+
+using ClusteredLowRankSolver
 import MathOptInterface as MOI
+using LinearAlgebra
+
+function __init__()
+    setglobal!(ClusteredLowRankSolver, :Optimizer, Optimizer)
+    return
+end
 
 mutable struct Optimizer <: MOI.AbstractOptimizer
     # before solving:
@@ -9,8 +19,6 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     variable_map::Vector{Union{Int, Tuple{Int,Int}, Tuple{Int, Int, Int}}} # Variable Index vi -> blk, i, j, like SDPA
     #after solving
     optimized::Bool
-    dualsol::DualSolution
-    primalsol::PrimalSolution
     result_data::Dict{Any, Any}
     # add default options to options
     function Optimizer()
@@ -33,11 +41,11 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
             :safe_step=>true,
             :correctoronly=>false,
             :save_settings=>SaveSettings()) 
-        opt.initiated=false
-        opt.optimized=false
-        opt.result_data=Dict{Any, Any}()
+        opt.initiated = false
+        opt.optimized = false
+        opt.result_data = Dict{Any, Any}()
         opt.variable_map = Vector{Union{Int, Tuple{Int,Int}, Tuple{Int, Int, Int}}}()
-        opt.block_dims=Int[]
+        opt.block_dims = Int[]
         return opt
     end
 end
@@ -59,8 +67,8 @@ function Base.summary(io::IO, opt::Optimizer)
     if opt.initiated
         return print(io, 
     """ClusteredLowRankSolver with $(length(opt.problem.constraints)) constraints, 
-    $(length(opt.primalsol.freevars)) free variables and 
-    $(length(opt.primalsol.matrixvars)) psd variables ($(sum(length(opt.psd_variable_sizes))) entries.
+    $(length(opt.result_data[:primalsol].freevars)) free variables and 
+    $(length(opt.result_data[:primalsol].matrixvars)) psd variables ($(sum(length(opt.block_dims))) entries).
     """)
     else 
         return print(io, """Uninitiated ClusteredLowRankSolver""")
@@ -118,12 +126,9 @@ function MOI.set(opt::Optimizer, attr::MOI.RawOptimizerAttribute, value)
     return opt.options[Symbol(attr.name)] = value
 end
 
-function MOI.get(opt::Optimizer, attr::MOI.RawSolver)
-    if opt.initiated
-        return opt.problem
-    else
-        error("ClusteredLowRankSolver not initiated")
-    end
+function MOI.get(opt::Optimizer, attr::MOI.RawSolver) 
+    # Would want to return Problem, but that gives an error. This is what they expect?
+    return opt
 end
 
 function MOI.get(opt::Optimizer, ::MOI.Silent)::Bool
@@ -231,7 +236,6 @@ function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
             end
             psd_dict = Dict()
             free_dict = Dict()
-            #TODO: find out the type of the terms
             for term in func.terms
                 if !iszero(term.coefficient)
                     idx = dest.variable_map[index_map[term.variable].value]
@@ -391,10 +395,10 @@ end
 
 function MOI.optimize!(opt::Optimizer)
     status, dualsol, primalsol, t, e = solvesdp(opt.problem; opt.options...)
-    opt.dualsol = dualsol
-    opt.primalsol = primalsol
     opt.optimized = true
     pr = opt.problem
+    opt.result_data[:primalsol] = primalsol
+    opt.result_data[:dualsol] = dualsol
     opt.result_data[:status] = status
     opt.result_data[:errorcode] = e
     opt.result_data[MOI.SolveTimeSec()] = t
@@ -402,9 +406,6 @@ function MOI.optimize!(opt::Optimizer)
     opt.result_data[MOI.DualObjectiveValue()] = pr.objective.constant + (-1)^(!pr.maximize) * sum(dualsol.x[i][1] * pr.constraints[i].constant for i in eachindex(dualsol.x))
     return 
 end
-
-
-# names (variables and constraints)?
 
 
 # some required attributes: (get)
@@ -510,53 +511,53 @@ function MOI.get(opt::Optimizer, attr::MOI.VariablePrimal, vi::MOI.VariableIndex
     idx = opt.variable_map[vi.value]
     if length(idx) == 3
         blk, i, j = idx
-        return opt.primalsol.matrixvars[blk][i,j]
+        return opt.result_data[:primalsol].matrixvars[blk][i,j]
     elseif length(idx) == 2 # 1x1 matrix variables
         blk, numvars = idx
-        return opt.primalsol.matrixvars[blk][1,1]
+        return opt.result_data[:primalsol].matrixvars[blk][1,1]
     else
         #free variable
-        return opt.primalsol.freevars[idx]
+        return opt.result_data[:primalsol].freevars[idx]
     end
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintDual, ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{T}, MOI.EqualTo{T}}) where T<:Real
     MOI.check_result_index_bounds(opt, attr)
-    return -opt.dualsol.x[ci.value][1]
+    return -opt.result_data[:dualsol].x[ci.value][1]
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintDual, ci::MOI.ConstraintIndex{MOI.VectorOfVariables, MOI.Nonnegatives})
     MOI.check_result_index_bounds(opt, attr)
     blk_start, numvars = opt.variable_map[ci.value]
-    return [opt.dualsol.matrixvars[blk_start+i][1,1] for i=0:numvars-1]
+    return [opt.result_data[:dualsol].matrixvars[blk_start+i][1,1] for i=0:numvars-1]
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintDual, ci::MOI.ConstraintIndex{MOI.VectorOfVariables, MOI.PositiveSemidefiniteConeTriangle})
     MOI.check_result_index_bounds(opt, attr)
     blk, i, j = opt.variable_map[ci.value]
     blkdim = opt.block_dims[blk]
-    return [opt.dualsol.matrixvars[blk][i,j] for i=1:blkdim for j=1:i]
+    return [opt.result_data[:dualsol].matrixvars[blk][i,j] for i=1:blkdim for j=1:i]
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintPrimal, ci::MOI.ConstraintIndex{MOI.VectorOfVariables,MOI.Nonnegatives})
     MOI.check_result_index_bounds(opt, attr)
     blk, numvars = opt.variable_map[ci.value]
-    return [opt.primalsol.matrixvars[blk+i][1,1] for i=0:numvars-1]
+    return [opt.result_data[:primalsol].matrixvars[blk+i][1,1] for i=0:numvars-1]
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintPrimal, ci::MOI.ConstraintIndex{MOI.VectorOfVariables,MOI.PositiveSemidefiniteConeTriangle})
     MOI.check_result_index_bounds(opt, attr)
     blk, i, j = opt.variable_map[ci.value]
     blkdim = opt.block_dims[blk]
-    return [opt.primalsol.matrixvars[blk][i,j] for j=1:blkdim for i=1:j]
+    return [opt.result_data[:primalsol].matrixvars[blk][i,j] for j=1:blkdim for i=1:j]
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.ConstraintPrimal, ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{T}, MOI.EqualTo{T}}) where T<:Real
     MOI.check_result_index_bounds(opt, attr)
     # find the value of <A, X>
     con = opt.problem.constraints[ci.value] 
-    return (sum(dot(con.matrixcoeff[k], opt.primalsol.matrixvars[k]) for k in eachindex(con.matrixcoeff); init=T(0))
-        + sum(con.freecoeff[k] * opt.primalsol.freevars[k] for k in eachindex(con.freecoeff); init=T(0)))
+    return (sum(dot(con.matrixcoeff[k], opt.result_data[:primalsol].matrixvars[k]) for k in eachindex(con.matrixcoeff); init=T(0))
+        + sum(con.freecoeff[k] * opt.result_data[:primalsol].freevars[k] for k in eachindex(con.freecoeff); init=T(0)))
 end
 
-
+end

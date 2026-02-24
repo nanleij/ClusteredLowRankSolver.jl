@@ -9,27 +9,33 @@ An error in the solver, with a message.
 struct SolverFailure <: Exception
     msg::String
 end
+
 """
-    SaveSettings(;kth_iteration=nothing, time_interval=nothing, only_last=true, save_name="solution")
+    SaveSettings(;iter_interval=nothing, time_interval=nothing, only_last=true, save_name="solution", callback=nothing)
 
 Settings for saving iterates during the solving process.
     - iter_interval : if an integer, save every 'iter_interval'-th iteration.
     - time_interval : if a Float64, save every 'time_interval' seconds. The solution is only saved at the end of an iteration.
     - only_last : if true, delete previous saves after saving a new iterate.
     - save_name : the name of the saved solution. A .jls extension is added. If only_last=false, a # is required in the name, which is used as placeholder for the save number. 
+    - callback : A way to customize saving. If this is a function, it uses the function to determine whether to save or not in this iteration.
+        The function should have as input: the iteration number k, the time since the start of the algorithm t, 
+            the number of iterations since last save, and the time since last save. 
+        The function should have as output a Bool where true means that the solution should be saved.        
 """
 struct SaveSettings
     iter_interval::Union{Int, Nothing}
     time_interval::Union{Real, Nothing}
     only_last::Bool
     save_name::String
-    function SaveSettings(;iter_interval::Union{Int, Nothing}=nothing, time_interval::Union{Real, Nothing}=nothing, only_last::Bool=true, save_name="solution" * (only_last ? "" : "#"))
-        if !only_last && !occursin("#", save_name) && (!isnothing(iter_interval) || !isnothing(time_interval))
+    callback::Union{Nothing,Function}
+    function SaveSettings(;iter_interval::Union{Int, Nothing}=nothing, time_interval::Union{Real, Nothing}=nothing, only_last::Bool=true, save_name="solution" * (only_last ? "" : "#"), callback=nothing)
+        if !only_last && !occursin("#", save_name) && (!isnothing(iter_interval) || !isnothing(time_interval) || !isnothing(callback))
             # need a # in the save name
             @info "Adding a # to the save name"
             save_name *= "#"
         end
-        new(iter_interval, time_interval, only_last, save_name)
+        new(iter_interval, time_interval, only_last, save_name, callback)
     end
 end
 
@@ -41,6 +47,8 @@ end
     solvesdp(sdp::ClusteredLowRankSDP; kwargs...)
 ```
 Solve the semidefinite program generated from `problem` or `sdp`. 
+
+Returns: status, dualsol, primalsol, solve_time, errorcode
 
 Keyword arguments:
   - `prec` (default: `precision(BigFloat)`): the precision used
@@ -468,13 +476,21 @@ function solvesdp(
         end
         # saving the solution
         save_iteration_count+=1
-        if !isnothing(save_settings.iter_interval) && save_iteration_count - last_save_iteration >= save_settings.iter_interval
-            save_now = true
-            last_save_iteration = save_iteration_count
-        end
-        if !isnothing(save_settings.time_interval) && time() - save_time_start >= save_settings.time_interval
-            save_now = true
-            save_time_start = time()
+        if isnothing(save_settings.callback)
+            if !isnothing(save_settings.iter_interval) && save_iteration_count - last_save_iteration >= save_settings.iter_interval
+                save_now = true
+                last_save_iteration = save_iteration_count
+            end
+            if !isnothing(save_settings.time_interval) && time() - save_time_start >= save_settings.time_interval
+                save_now = true
+                save_time_start = time()
+            end
+        else
+            save_now = save_settings.callback(iter, time()-time_start, iter - last_save_iteration, time()-save_time_start)
+            if save_now
+                last_save_iteration = iter
+                save_time_start = time()
+            end
         end
         if save_now
             if save_settings.only_last # overwrite
@@ -487,7 +503,6 @@ function solvesdp(
             serialize(save_name, (dualsol, primalsol))
             save_now = false
         end
-
 
         # We save the times of everything except for the first iteration, as they may include compile time
         if iter >= 2

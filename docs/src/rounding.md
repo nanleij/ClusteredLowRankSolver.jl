@@ -51,7 +51,7 @@ d = 3
 problem, dualsol, primalsol = delsarte(8, 1//2, d; duality_gap_threshold=1e-30)
 R, (x,) = polynomial_ring(QQ, 1)
 mon_basis = [x^k for k=0:2d]
-success, exactdualsol = exact_solution(problem, dualsol, primalsol, monbases = [mon_basis])
+success, exactprimalsol = exact_solution(problem, dualsol, primalsol, monbases = [mon_basis])
 ```
 
 ## Finding the appropriate number field for the rounding procedure

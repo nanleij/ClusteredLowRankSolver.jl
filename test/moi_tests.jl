@@ -1,4 +1,14 @@
+
+# jump + rounding tests
+include("../examples/jump.jl")
 import MathOptInterface as MOI
+
+@testset "Rounding + JuMP" begin
+    val, g = example_theta_problem()
+    @test isapprox(generic_embedding(val, g, base_ring=BigFloat), sqrt(big(5)), atol=1e-30) 
+    val, g = example_POVM()
+    @test isapprox(generic_embedding(val, g, base_ring=BigFloat), 1//4*sqrt(big(2)) + 1//2, atol=1e-30)
+end
 
 # test with BigFloat since we return BigFloat
 model = MOI.instantiate(ClusteredLowRankSolver.Optimizer; with_bridge_type = BigFloat)

@@ -13,6 +13,6 @@ dualsol, primalsol = deserialize('solution.jl')
 ```
 
 
-@docs```
+```@docs
 SaveSettings
 ```

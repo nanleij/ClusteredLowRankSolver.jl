@@ -23,6 +23,8 @@ export LowRankMatPol, Block, Constraint, Objective,	Problem, ClusteredLowRankSDP
 export name
 export Maximize, Minimize
 
+export Optimal, NearOptimal, DualFeasible, PrimalFeasible, Feasible, NotConverged
+
 export objective, matrixcoeff, freecoeff, matrixcoeffs, freecoeffs, constraints
 
 export approximatefeketeexact
@@ -71,10 +73,12 @@ include("basesandsamples.jl")
 
 include("SDPAtoCLRS.jl")
 
-include("MOI_wrapper/MOI_wrapper.jl")
+# include("MOI_wrapper/MOI_wrapper.jl")
 
 # include("precompile.jl")
 
+# for MOI/JuMP:
+global Optimizer
 
 
 end

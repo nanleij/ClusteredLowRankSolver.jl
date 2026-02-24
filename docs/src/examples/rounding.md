@@ -29,9 +29,9 @@ function delsarte_exact(n, d, costheta; FF=QQ, g=1, eps=1e-40)
     problem = Problem(Minimize(objective), constraints)
 
     problem_bigfloat = map(x->generic_embedding(x, g), problem)
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem_bigfloat, duality_gap_threshold=eps)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem_bigfloat, duality_gap_threshold=eps)
 
-    return objvalue(problem, dualsol), problem, primalsol, dualsol
+    return objvalue(problem, primalsol), problem, dualsol, primalsol
 end
 nothing #hide
 ```
@@ -58,15 +58,15 @@ n = 4
 d = 9
 costheta = 1/(z-1)
 # find an approximate solution
-obj, problem, primalsol, dualsol = delsarte_exact(n, d, costheta; FF=N, g = gapprox)
+obj, problem, dualsol, primalsol = delsarte_exact(n, d, costheta; FF=N, g = gapprox)
 # round the approximate solution to an exact solution
-success, exactdualsol = exact_solution(problem, primalsol, dualsol; FF=N, g=gapprox)
-objexact = objvalue(problem, exactdualsol)
+success, exactprimalsol = exact_solution(problem, dualsol, primalsol; FF=N, g=gapprox)
+objexact = objvalue(problem, exactprimalsol)
 (success, objexact)
 ```
 When the problem is not defined over the same field as the solution, we can find the field using
 ```@example rounding
-N2, gapprox2 = find_field(primalsol, dualsol)
+N2, gapprox2 = find_field(dualsol, primalsol)
 defining_polynomial(N2), gapprox2
 ```
 which returns the field with defining polynomial ``x^2 + x - 1 = 0`` and approximate generator ``-1.618033... \approx (-1 -\sqrt{5})/2``.
@@ -74,10 +74,10 @@ which returns the field with defining polynomial ``x^2 + x - 1 = 0`` and approxi
 ## Using coefficient matching
 As mentioned in the section about [Rounding](@ref secrounding), using coefficient matching will often result in a solution of smaller bit size. To do that in this example, one can use
 ```@example rounding
-obj, problem, primalsol, dualsol = delsarte_exact(n, d, costheta; FF=N, g = gapprox)
+obj, problem, dualsol, primalsol = delsarte_exact(n, d, costheta; FF=N, g = gapprox)
 R, x = polynomial_ring(N, :x)
 mon_basis = [x^k for k=0:2d]
-success, exactdualsol_smaller = exact_solution(problem, primalsol, dualsol, FF=N, g=gapprox, monomial_bases = [mon_basis])
+success, exactprimalsol_smaller = exact_solution(problem, dualsol, primalsol, FF=N, g=gapprox, monomial_bases = [mon_basis])
 nothing # show the full output, this time? # hide
 ```
 This is recommended especially for larger polynomial programs.
@@ -131,9 +131,9 @@ function delsarte_exact(n, d, costheta; obj=nothing, FF=QQ, g=1, eps=1e-40)
     problem = Problem(Minimize(objective), constraints)
 
     problem_bigfloat = map(x->generic_embedding(x, g), problem)
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem_bigfloat, duality_gap_threshold=eps)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem_bigfloat, duality_gap_threshold=eps)
 
-    return objvalue(problem, dualsol), problem, primalsol, dualsol
+    return objvalue(problem, primalsol), problem, dualsol, primalsol
 end
 ```
 ```@example rounding2
@@ -142,8 +142,8 @@ d = 10
 obj_initial, problem_initial, _, _ = delsarte_exact(3, d, 1//2)
 # find a strictly feasible solution with a slightly larger objective
 obj = obj_initial + 1e-6
-_, problem, primalsol, dualsol = delsarte_exact(3, d, 1//2, obj=rationalize(obj))
+_, problem, dualsol, primalsol = delsarte_exact(3, d, 1//2, obj=rationalize(obj))
 # round the solution
-successfull, exactdualsol = exact_solution(problem, primalsol, dualsol)
-Float64(objvalue(problem_initial, exactdualsol)), obj_initial
+successfull, exactprimalsol = exact_solution(problem, dualsol, primalsol)
+Float64(objvalue(problem_initial, exactprimalsol)), obj_initial
 ```
