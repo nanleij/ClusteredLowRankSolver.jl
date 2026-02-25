@@ -1,6 +1,6 @@
 name = "ClusteredLowRankSolver"
 uuid = "cadeb640-247c-4e6d-a8b8-270aef5e1f95"
-version = "1.2.1"
+version = "2.0.0"
 authors = ["nanleij <38724800+nanleij@users.noreply.github.com> and contributors"]
 
 [deps]
@@ -32,7 +32,7 @@ BlockDiagonals = "0.1, 0.2"
 Combinatorics = "1.0, 1.1"
 GenericLinearAlgebra = "0.2, 0.3"
 IterTools = "1"
-JuMP = "1.29.4"
+JuMP = "1.28, 1.29"
 KrylovKit = "0.5, 0.6, 0.7, 0.8, 0.9, 0.10"
 Nemo = "0.43, 0.44, 0.45, 0.46, 0.47, 0.48, 0.49, 0.50, 0.51, 0.52, 0.53, 0.54"
 PrecompileTools = "1"

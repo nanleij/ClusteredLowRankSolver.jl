@@ -1,6 +1,6 @@
 using JuMP, ClusteredLowRankSolver, LinearAlgebra
 
-# the SDP formulation is an example from the JuMP documentation
+# the SDP formulations are examples from the JuMP documentation
 function example_theta_problem()
     model = GenericModel{BigFloat}(ClusteredLowRankSolver.Optimizer)
     set_attribute(model, "duality_gap_threshold", 1e-30)
@@ -50,6 +50,6 @@ function example_POVM()
 
     FF, g = find_field(model)
     status, problem, esol = exact_solution(model; FF, g)
-    println("The exact objective is $(objective_value(model)) with z approximately equal to $g")
+    println("The exact objective is $(objvalue(problem, esol)) with z approximately equal to $g")
     return objvalue(problem, esol), g
 end

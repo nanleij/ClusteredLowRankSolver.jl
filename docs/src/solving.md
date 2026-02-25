@@ -1,5 +1,5 @@
 # [The solver](@id solver)
-[`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) implements a primal-dual interior-point method. That is, it solves both the primal and the dual problem. The problem given to the solver is considered to be in dual form. For more information on the primal-dual algorithm, see [de-laat-clustered-2022](@cite) and [simmons-duffin-semidefinite-2015](@cite).
+[`ClusteredLowRankSolver.jl`](https://github.com/nanleij/ClusteredLowRankSolver.jl) implements a primal-dual interior-point method. That is, it solves both the primal and the dual problem. The solver considers the problem (equality constraints) as the primal SDP. For more information on the primal-dual algorithm, see [de-laat-clustered-2022](@cite) and [simmons-duffin-semidefinite-2015](@cite).
 
 A [`Problem`](@ref) can be solved using the function [`solvesdp`](@ref). This first converts the problem to a [`ClusteredLowRankSDP`](@ref), after which it is solved using the algorithm.
 ```@docs
@@ -34,7 +34,7 @@ In order of output, we have (where the values are from the start of the iteratio
 
 An example of the output of the [Example](@ref expolyopt) from polynomial optimization is
 ```
-iter  time(s)           μ       P-obj       D-obj        gap    P-error    p-error    d-error        α_p        α_d       beta
+iter  time(s)           μ       D-obj       P-obj        gap    D-error    d-error    p-error        α_p        α_d       beta
     1     11.9   1.000e+20   0.000e+00   0.000e+00   0.00e+00   1.00e+10   1.00e+00   1.95e+10   7.42e-01   7.10e-01   3.00e-01
     2     13.4   3.995e+19   1.999e+11  -2.907e+09   1.03e+00   2.58e+09   2.58e-01   5.65e+09   7.46e-01   7.17e-01   3.00e-01
     3     13.4   1.576e+19   3.079e+11  -4.779e+09   1.03e+00   6.53e+08   6.53e-02   1.60e+09   7.32e-01   7.31e-01   3.00e-01

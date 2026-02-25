@@ -4,7 +4,7 @@ Since version 2.0.0, ClusteredLowRankSolver supports [JuMP](https://jump.dev/JuM
     model = GenericModel{BigFloat}(ClusteredLowRankSolver.Optimizer)
 ```
 
-It is possible to round solutions from JuMP models. However, due to how JuMP is designed, the model will not be modified since the number type of the model cannot be changed to Nemo numbers. If no bridges are used (the model only uses PSD, nonnegative and free variables, and equality constraints), the variables in the `Problem` and `PrimalSolution` have the same names as the JuMP variables (where possible).  
+It is possible to round solutions from JuMP models using `find_field` and `exact_solution`. However, due to how JuMP is designed, the model will not be modified since the number type of the model cannot be changed to Nemo numbers. If no bridges are used (the model only uses PSD, nonnegative and free variables, and equality constraints), the variables in the `Problem` and `PrimalSolution` have the same names as the JuMP variables (where possible).  
 
 Below is the code for the Lovasz-theta number of the 5-cycle, modified from the [JuMP documentation](https://jump.dev/JuMP.jl/stable/tutorials/conic/simple_examples/#Lovász-numbers).
 ```julia
@@ -42,9 +42,7 @@ function example_theta_problem()
     # round the solution
     FF, g = find_field(model)
     status, problem, esol = exact_solution(model; FF, g)
-    # problem and esol are the ClusteredLowRankSolver structs
-
-    # get the matrix. 
+    # problem and esol are the ClusteredLowRankSolver structs, so we can extract the matrix using
     matrixvar(esol, :X)
     # If bridges where used to transform the problem in a SDP in equality form,
     # the names of the variables are indices (e.g. matrixvar(esol, 1))

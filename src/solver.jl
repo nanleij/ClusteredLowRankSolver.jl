@@ -268,7 +268,7 @@ function solvesdp(
     iter = 1
     if verbose
 		@printf("%5s %8s %11s %11s %11s %10s %10s %10s %10s %10s %10s %10s\n",
-            "iter","time(s)","μ","P-obj","D-obj","gap","P-error","p-error","d-error","α_p","α_d","beta"
+            "iter","time(s)","μ","D-obj","P-obj","gap","D-error","d-error","p-error","α_d","α_p","beta"
         )
 	end
     alpha_p = alpha_d = AL.Arb(0, prec=prec)
@@ -300,8 +300,8 @@ function solvesdp(
     d_obj = compute_dual_objective(sdp, x)
     p_obj = compute_primal_objective(sdp, y, Y)
     dual_gap = compute_duality_gap(sdp, x, y, Y)
+    #NOTE: P, p and d are as originally introduced in the paper, instead of changed to D, d, p as in the printing.
     time_res = @elapsed begin
-        #goes wrong here (probably due to improper window or something like that)
         compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
     end
     dual_error = compute_dual_error(P, p)
@@ -439,8 +439,8 @@ function solvesdp(
         # step 7: compute the step lengths
         allocs[5] += @allocated begin
             time_alpha = @elapsed begin
-                alpha_p = compute_step_length(X, dX, gamma, tempX, pd_feas && !safe_step, threadinginfo)
-                alpha_d = compute_step_length(Y, dY, gamma, tempX, pd_feas && !safe_step, threadinginfo)
+                alpha_d = compute_step_length(X, dX, gamma, tempX, pd_feas && !safe_step, threadinginfo)
+                alpha_p = compute_step_length(Y, dY, gamma, tempX, pd_feas && !safe_step, threadinginfo)
             end
         end
 
@@ -462,15 +462,15 @@ function solvesdp(
                 alpha_d = alpha_p
             end
             #step 8: perform the step
-            Arblib.addmul!(x, dx, alpha_p)
-            Arblib.addmul!(y, dy, alpha_d)
+            Arblib.addmul!(x, dx, alpha_d)
+            Arblib.addmul!(y, dy, alpha_p)
             Arblib.get_mid!(x,x)
             Arblib.get_mid!(y,y)
             Threads.@threads for (j,l) in threadinginfo.jl_order
-                Arblib.addmul!(X.blocks[j].blocks[l], dX.blocks[j].blocks[l], alpha_p)
+                Arblib.addmul!(X.blocks[j].blocks[l], dX.blocks[j].blocks[l], alpha_d)
                 Arblib.get_mid!(X.blocks[j].blocks[l], X.blocks[j].blocks[l])
 
-                Arblib.addmul!(Y.blocks[j].blocks[l], dY.blocks[j].blocks[l], alpha_d)
+                Arblib.addmul!(Y.blocks[j].blocks[l], dY.blocks[j].blocks[l], alpha_p)
                 Arblib.get_mid!(Y.blocks[j].blocks[l], Y.blocks[j].blocks[l])
             end
         end
@@ -536,7 +536,7 @@ function solvesdp(
                 " cholQ:",
                 time_cholQ,
             )
-            println("X inv:", time_inv, ". R:", time_R, ". residuals p,P,d:", time_res)
+            println("X inv:", time_inv, ". R:", time_R, ". residuals D, d, p:", time_res)
         end
         # print the objectives of the start of the iteration, imitating simmons duffin
         # This might be a bit weird, because we only know the 1+sum(sizes[1:r-1]):1+sum(sizes[1:r])step lengths at the end of the iteration
@@ -552,8 +552,8 @@ function solvesdp(
                 BigFloat(compute_error(P)),
                 BigFloat(compute_error(p)),
                 BigFloat(compute_error(d)),
-                BigFloat(alpha_p),
                 BigFloat(alpha_d),
+                BigFloat(alpha_p),
                 beta_c
             )
         end
@@ -618,14 +618,14 @@ function solvesdp(
             "iter",
             "time(s)",
             "μ",
-            "P-obj",
             "D-obj",
+            "P-obj",
             "gap",
-            "P-error",
-            "p-error",
+            "D-error",
             "d-error",
-            "α_p",
+            "p-error",
             "α_d",
+            "α_p",
             "beta"
         )
 		if testing
@@ -683,8 +683,8 @@ function solvesdp(
             )
             @printf("%11.4e %11.4e %11.4e %11.4e %11.4e %11.4e\n\n", allocs...)
         end
-		println("\nDual objective:", dualobj)
-		println("Primal objective:", primalobj)
+		println("\nPrimal objective:", primalobj)
+		println("Dual objective:", dualobj)
 		println("duality gap:", BigFloat(dual_gap))
 
     end
