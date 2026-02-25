@@ -9,10 +9,10 @@ You can choose whether only the last solution is kept (`only_last = true`, defau
 The solutions can be retrieved using `deserialize` of `Serialization.jl`:
 ```julia
 using Serialization
-primalsol, dualsol = deserialize('solution.jl')
+dualsol, primalsol = deserialize('solution.jl')
 ```
 
 
-@docs```
+```@docs
 SaveSettings
 ```

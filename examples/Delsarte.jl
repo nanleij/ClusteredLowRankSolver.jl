@@ -44,8 +44,8 @@ function delsarte(n, d, costheta)
     constr2 = Constraint(-1, psd_dict2, free_dict2)
 
     problem = Problem(Minimize(obj), [constr1, constr2])
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
-    return objvalue(problem, dualsol)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem)
+    return objvalue(problem, primalsol)
 end
 
 end # end module

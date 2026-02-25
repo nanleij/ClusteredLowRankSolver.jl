@@ -26,7 +26,7 @@ RoundingSettings
 Depending on the problem, the default parameters will suffice. In the following cases small changes are needed:
   1. The kernel vectors are not found correctly, or have significantly higher maximum number after reduction than the maximum numerator and denominator.
      - Try to solve to a smaller duality gap, and/or decrease the setting `kernel_round_errbound`.
-     - Try the settings `kernel_use_primal=false`.
+     - Try the settings `kernel_use_dual=false`.
      
   2. The final solution does not satisfy the constraints. (Or not enough pivots were found) 
      - increase `redundancyfactor`, or set it to `-1` to take all variables into account.
@@ -37,20 +37,26 @@ Depending on the problem, the default parameters will suffice. In the following 
      - Increase the setting `pseudo_columnfactor`. The higher this setting, the closer the exact solution will be to the provided solution. However, this also increases the bit size of the exact solution.
      - In some cases this is also an indication that the kernel vectors are not found correctly (see item 1), especially when the reported negative eigenvalues are close to zero.
 
+   4. I want a solution with smaller numbers.
+     - Use `unimodular_transform=false`. This will give a non-unimodular transform, and it depends a lot on the kernel vectors whether this is better or worse.
+     - Decrease the setting `approximation_decimals`. 
+     - Use the setting `pseudo=false`. When this does give a solution, it typically has smaller bitsize.
+     - If `pseudo=false` does not work, decrease `pseudo_columnfactor` instead. This gives something closer to `pseudo=false` while keeping the solution positive semidefinite.
+
 ## Using coefficient matching
 
 Although the semidefinite program used in the solver is defined using sampling, it is possible to use a semidefinite program defined using coefficient matching in a monomial basis for the rounding procedure. This is not yet fully automated; the user needs to provide the monomial basis for each polynomial constraint to the rounding procedure in order to use this. Using coefficient matching instead of sampling in the rounding heuristic generally decreases the size of the exact solutions. See below for an example using the slightly modified code for the Delsarte LP bound in the [example](@ref exrounding) for rounding. Here we have one univariate constraint with polynomials up to degree ``2d``.
 ```julia
 d = 3
-problem, primalsol, dualsol = delsarte(8, 1//2, d; duality_gap_threshold=1e-30)
+problem, dualsol, primalsol = delsarte(8, 1//2, d; duality_gap_threshold=1e-30)
 R, (x,) = polynomial_ring(QQ, 1)
 mon_basis = [x^k for k=0:2d]
-success, exactdualsol = exact_solution(problem, primalsol, dualsol, monbases = [mon_basis])
+success, exactprimalsol = exact_solution(problem, dualsol, primalsol, monbases = [mon_basis])
 ```
 
 ## Finding the appropriate number field for the rounding procedure
 
-It is in general not directly clear over which  number field the optimal face can be defined. The function [`find_field`](@ref) can help to find such a field. See Section 2.5 of [CLL24](@cite) for an explanation of the procedure.
+It is in general not directly clear over which number field the optimal face can be defined. The function [`find_field`](@ref) can help to find such a field. See Section 2.5 of [CLL24](@cite) for an explanation of the procedure. Note that this is a heuristic, and might not find the correct field (especially if the solution is of relatively low precision compared to the degree of the number field).
 ```@docs
 find_field
 ```

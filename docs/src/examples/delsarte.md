@@ -103,11 +103,11 @@ Now we can define the `Problem`.
 ```
 and solve the corresponding semidefinite program with
 ```@example 1; continued=true
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem)
 ```
 after which we return the objective value.
 ```@example 1
-    return objvalue(problem, dualsol)
+    return objvalue(problem, primalsol)
 end
 nothing # hide
 ```

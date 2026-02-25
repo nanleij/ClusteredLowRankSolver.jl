@@ -815,13 +815,22 @@ struct ClusteredLowRankSDP
     matrix_coeff_names::Vector{Vector{Any}}                 # the (user defined) names of the blocks
     free_coeff_names::Vector{Any}                           # the (user defined) names of the free variables
     matrix_coeff_blocks::Vector{Vector{Tuple{Bool, Int}}}   # whether the user used Block and the number of subblocks 
+    order_c::Dict{Tuple{Int, Int}, Int}         # a map from the (constraintindex, sampleindex) from the problem  to (clusterindex, constraintindex_in_cluster) 
 end
 
 function ClusteredLowRankSDP(maximize, constant, A, B, c, C, b)
     matrixcoeff_names = [[(j,l) for l in eachindex(A[j])] for j in eachindex(A)]
     freecoeff_names = collect(1:size(b,1))
     matrix_coeff_blocks = [[(false, 1) for l in block] for block in A]
-    ClusteredLowRankSDP(maximize, constant, A, B, c, C, b, matrixcoeff_names, freecoeff_names,matrix_coeff_blocks)
+    order_c = Dict{Tuple{Int, Int}, Int}()
+    k = 1
+    for j in eachindex(c)
+        for l in eachindex(c[l])
+            order_c[(k, 1)] = k
+            k+=1
+        end
+    end
+    ClusteredLowRankSDP(maximize, constant, A, B, c, C, b, matrixcoeff_names, freecoeff_names,matrix_coeff_blocks, order_c)
 end
 
 """
@@ -1008,9 +1017,17 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     freecoefflabels = []
     for constraint in sos.constraints
         #We want an ordering for B and b; consistent over multiple runs
-        append!(freecoefflabels, sort(collect(keys(constraint.freecoeff)), by=hash))
+        append!(freecoefflabels, collect(keys(constraint.freecoeff)))
+    end
+    notconstrained = [k for k in keys(sos.objective.freecoeff) if !(k in freecoefflabels)]
+    if length(notconstrained) > 0
+        @warn "There are unconstrained variables in the objective: $notconstrained. Removing the variables."
+        for v in notconstrained
+            delete!(sos.objective.freecoeff, v)
+        end
     end
     unique!(freecoefflabels) 
+    sort!(freecoefflabels, by=hash)
     freecoefflabels_dict = Dict(k=>i for (i,k) in enumerate(freecoefflabels))
 
     # B is a vector of the matrices B^j
@@ -1032,12 +1049,23 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     end
     verbose && println("Sampling the constants...")
     c = [ArbRefMatrix([sampleevaluate(sos.constraints[constraintindex].scalings[s_idx]*sos.constraints[constraintindex].constant,sample) for constraintindex in constraintindices for (s_idx,sample) in enumerate(sos.constraints[constraintindex].samples)],prec=prec) for constraintindices in cluster_constraint_index]
+    
+    order_c = Dict{Tuple{Int, Int}, Int}()# given (constraintindex, sampleindex), what is the (cluster, constraintindex) in the sdp?
+    l = 1
+    for (j, constraintindices) in enumerate(cluster_constraint_index) 
+        for (i,constraintindex) in enumerate(constraintindices) 
+            for k in eachindex(sos.constraints[constraintindex].samples)
+                order_c[(constraintindex, k)] = l
+                l+=1
+            end
+        end
+    end
 
     b = ArbRefMatrix(length(freecoefflabels),1,prec=prec)
     for (k,v) in sos.objective.freecoeff
         b[freecoefflabels_dict[k]] = Arb(v, prec=prec)
     end
-    ClusteredLowRankSDP(sos.maximize, Arb(sos.objective.constant,prec=prec), A, B, c, C_block, b, matrix_coeff_names,freecoefflabels, matrix_coeff_blocks)
+    ClusteredLowRankSDP(sos.maximize, Arb(sos.objective.constant,prec=prec), A, B, c, C_block, b, matrix_coeff_names,freecoefflabels, matrix_coeff_blocks, order_c)
 end
 
 """
@@ -1078,7 +1106,7 @@ function convert_to_prec(sdp::ClusteredLowRankSDP,prec=precision(BigFloat))
     new_b = ArbRefMatrix(sdp.b, prec=prec)
     Arblib.get_mid!(new_b, new_b)
 
-    return ClusteredLowRankSDP(sdp.maximize,new_constant,new_A,new_B,new_c,new_C,new_b,sdp.matrix_coeff_names,sdp.free_coeff_names, sdp.matrix_coeff_blocks)
+    return ClusteredLowRankSDP(sdp.maximize,new_constant,new_A,new_B,new_c,new_C,new_b,sdp.matrix_coeff_names,sdp.free_coeff_names, sdp.matrix_coeff_blocks, sdp.order_c)
 end
 
 ######################
@@ -1089,8 +1117,8 @@ end
 abstract type Status end
 struct Optimal <: Status end
 struct NearOptimal <: Status end
-struct PrimalFeasible <: Status end
 struct DualFeasible <: Status end
+struct PrimalFeasible <: Status end
 struct Feasible <: Status end
 struct NotConverged <: Status end
 
@@ -1105,42 +1133,42 @@ optimal(::Optimal) = true
 Base.show(io::IO, x::Optimal) = @printf(io, "pdOpt")
 Base.show(io::IO, x::NearOptimal) = @printf(io,"NearOpt")
 Base.show(io::IO, x::Feasible) = @printf(io,"pdFeas")
-Base.show(io::IO, x::PrimalFeasible) = @printf(io,"pFeas")
 Base.show(io::IO, x::DualFeasible) = @printf(io,"dFeas")
+Base.show(io::IO, x::PrimalFeasible) = @printf(io,"pFeas")
 Base.show(io::IO, x::Status) = @printf(io,"NOINFO")
-
-"""
-    PrimalSolution{T}
-
-A primal solution to the semidefinite program, with fields
-  - `base_ring`
-  - `x::Vector{T}`
-  - `matrixvars::Dict{Any, Matrix{T}}`
-"""
-struct PrimalSolution{T}
-    base_ring
-    x::Vector{T}
-    matrixvars::Dict{Any,Matrix{T}} 
-end
 
 """
     DualSolution{T}
 
 A dual solution to the semidefinite program, with fields
   - `base_ring`
+  - `x::Vector{Vector{T}}`  -- The primal variables to the constraints. Indexed by [constraintindex][sampleindex]
+  - `matrixvars::Dict{Any, Matrix{T}}` -- The primal variables to the PSD constraints on the matrices
+"""
+struct DualSolution{T}
+    base_ring
+    x::Vector{Vector{T}}
+    matrixvars::Dict{Any,Matrix{T}} 
+end
+
+"""
+    PrimalSolution{T}
+
+A primal solution to the semidefinite program, with fields
+  - `base_ring`
   - `matrixvars::Dict{Any, Matrix{T}}`
   - `freevars::Dict{Any, T}`
 """
-struct DualSolution{T}
+struct PrimalSolution{T}
     base_ring
     matrixvars::Dict{Any,Matrix{T}}
     freevars::Dict{Any,T}
 end
 
 """
-    objvalue(objective::Objective, sol::DualSolution)
+    objvalue(objective::Objective, sol::PrimalSolution)
 """
-function objvalue(objective::Objective, sol::DualSolution{T}) where T <: Number
+function objvalue(objective::Objective, sol::PrimalSolution{T}) where T <: Number
     obj = T(objective.constant)
     for k in keys(objective.matrixcoeff)
         obj += dot(T.(objective.matrixcoeff[k]), sol.matrixvars[k])
@@ -1151,7 +1179,7 @@ function objvalue(objective::Objective, sol::DualSolution{T}) where T <: Number
     obj
 end
 # for exact fields from Nemo
-function objvalue(objective::Objective, sol::DualSolution)
+function objvalue(objective::Objective, sol::PrimalSolution)
     obj = objective.constant
     for k in keys(objective.matrixcoeff)
         obj += dot(objective.matrixcoeff[k], sol.matrixvars[k])
@@ -1162,22 +1190,22 @@ function objvalue(objective::Objective, sol::DualSolution)
     obj
 end
 """
-    objvalue(problem::Problem, sol::DualSolution)
+    objvalue(problem::Problem, sol::PrimalSolution)
 
-Return the objective value of the dual solution with respect to the given objective or problem.
+Return the objective value of the primal solution with respect to the given objective or problem.
 """
-function objvalue(problem::Problem, sol::DualSolution)
+function objvalue(problem::Problem, sol::PrimalSolution)
     objvalue(problem.objective, sol)
 end
-function objvalue(obj::Union{Minimize, Maximize}, sol::DualSolution)
+function objvalue(obj::Union{Minimize, Maximize}, sol::PrimalSolution)
     objvalue(objective(obj), sol)
 end
 
-#Q: Do we want abstract struct Solution, with subtypes DualSolution and PrimalSolution?
+#Q: Do we want abstract struct Solution, with subtypes PrimalSolution and DualSolution?
 # then stuff like matrixvar works for both
 struct Solution{T}
-    primalsol::PrimalSolution{T}
     dualsol::DualSolution{T}
+    primalsol::PrimalSolution{T}
 end
 
 """
@@ -1185,11 +1213,7 @@ end
 
 Return the matrix variable corresponding to name
 """
-function matrixvar(sol::DualSolution, name)
-    sol.matrixvars[name]
-end
-
-function matrixvar(sol::PrimalSolution, name)
+function matrixvar(sol::T, name) where T <: Union{PrimalSolution, DualSolution}
     sol.matrixvars[name]
 end
 
@@ -1198,11 +1222,7 @@ end
 
 Return the dictionary of matrix variables
 """
-function matrixvars(sol::DualSolution)
-    sol.matrixvars
-end
-
-function matrixvars(sol::PrimalSolution)
+function matrixvars(sol::T) where T <: Union{PrimalSolution, DualSolution}
     sol.matrixvars
 end
 
@@ -1211,7 +1231,7 @@ end
 
 Return the free variable corresponding to name
 """
-function freevar(sol::DualSolution, name)
+function freevar(sol::PrimalSolution, name)
     sol.freevars[name]
 end
 """
@@ -1219,7 +1239,7 @@ end
 
 Return the dictionary of the free variables
 """
-function freevars(sol::DualSolution)
+function freevars(sol::PrimalSolution)
     sol.freevars
 end
 
@@ -1233,16 +1253,16 @@ LinearAlgebra.dot(m::LowRankMatPol, v::Matrix) = traceinner(m, v)
 
 function traceinner(m::T, v::S) where {S, T <: Union{MatrixElem, Matrix}}
     @assert size(m) == size(v)
-    sum(2^(i!=j) * m[i, j] * v[i, j] for i=1:size(m,1) for j=i:size(m,2))
+    sum(m[i, j] * v[i, j] for i=1:size(m,1) for j=1:size(m,2))
 end
 
 #compute Ax-b, where the constraints should satisfy Ax = b
 """
-    slacks(problem, dualsol)
+    slacks(problem, primalsol)
 
 Compute the difference between the left hand side and the right hand side of all constraints
 """
-function slacks(problem::Problem, sol::DualSolution)
+function slacks(problem::Problem, sol::PrimalSolution)
     slacks = []
     for constraint in problem.constraints
         slack = -constraint.constant
@@ -1264,7 +1284,7 @@ end
 Vectorize the solution by taking the upper triangular part of the matrices. 
 The variables are first sorted by size and then by hash.
 """
-function vectorize(sol::DualSolution{T}) where T
+function vectorize(sol::PrimalSolution{T}) where T
     v = T[]
     for k in sort(collect(keys(sol.matrixvars)), by=k->(size(sol.matrixvars[k],1), hash(k)))
         m = sol.matrixvars[k]
@@ -1279,11 +1299,11 @@ function vectorize(sol::DualSolution{T}) where T
 end
 
 """
-    as_dual_solution(sol, x)
+    as_primal_solution(sol, x)
 
 Undo the vectorization of x.
 """
-function as_dual_solution(sol::DualSolution, x::Vector{T}) where T
+function as_primal_solution(sol::PrimalSolution, x::Vector{T}) where T
     t = 1
 
     matrixvars = Dict{Any,Matrix{T}}()
@@ -1303,7 +1323,7 @@ function as_dual_solution(sol::DualSolution, x::Vector{T}) where T
         t += 1
     end
 
-    DualSolution{T}(parent(x[1]), matrixvars, freevars)
+    PrimalSolution{T}(parent(x[1]), matrixvars, freevars)
 end
 
 #TODO: what exactly do we want here in case of subblocks?
@@ -1323,19 +1343,19 @@ end
 
 
 """
-	partial_linearsystem(problem::Problem, sol::DualSolution, columns::Union{DualSolution, Vector{Int}})
+	partial_linearsystem(problem::Problem, sol::PrimalSolution, columns::Union{PrimalSolution, Vector{Int}})
 
 Let x be the vcat of the vectorizations of the matrix variables. Let I be the index set of the columns.
 This function returns the matrix A_I and vector b-Ax such that the constraints for 
 the error vector e using variables indexed by I are given by the system A_Ie = b-Ax.
 """
-function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Vector{Int}; FF=QQ, monomial_bases=nothing)
-    # create a dual solution with 1 if the variable should be in the system and 0 otherwise
+function partial_linearsystem(problem::Problem, sol::PrimalSolution, columns::Vector{Int}; FF=QQ, monomial_bases=nothing)
+    # create a primal solution with 1 if the variable should be in the system and 0 otherwise
     x_cols = zero(vectorize(sol))
     for i in columns
         x_cols[i] = 1
     end
-    columns_sol = as_dual_solution(sol, x_cols)
+    columns_sol = as_primal_solution(sol, x_cols)
     # create a vector with indices being the columns that need to be taken into account
     # x_cols = vectorize(columns)
     # columns = [i for i in eachindex(x_cols) if x_cols[i] != 0]
@@ -1344,7 +1364,7 @@ function partial_linearsystem(problem::Problem, sol::DualSolution, columns::Vect
     p = sortperm(columns)
     A[:, invperm(p)], b
 end
-function partial_linearsystem(problem::Problem, sol::DualSolution, columns::DualSolution; FF=QQ, monomial_bases=nothing)
+function partial_linearsystem(problem::Problem, sol::PrimalSolution, columns::PrimalSolution; FF=QQ, monomial_bases=nothing)
     t = @elapsed begin
         rhs = -slacks(problem, sol) # b - Ax
         if isnothing(monomial_bases)

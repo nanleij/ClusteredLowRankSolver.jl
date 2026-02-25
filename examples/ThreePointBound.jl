@@ -164,8 +164,8 @@ function three_point_spherical_codes(
     problem = Problem(Minimize(obj), constraints)
 
     # solve the problem
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem; kwargs...)
-    return problem, primalsol, dualsol
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem; kwargs...)
+    return problem, dualsol, primalsol 
 end
 
 end # of module

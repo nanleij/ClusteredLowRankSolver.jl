@@ -23,6 +23,8 @@ export LowRankMatPol, Block, Constraint, Objective,	Problem, ClusteredLowRankSDP
 export name
 export Maximize, Minimize
 
+export Optimal, NearOptimal, DualFeasible, PrimalFeasible, Feasible, NotConverged
+
 export objective, matrixcoeff, freecoeff, matrixcoeffs, freecoeffs, constraints
 
 export approximatefeketeexact
@@ -35,9 +37,9 @@ export SampledMPolyRingElem, SampledMPolyRing, sampled_polynomial_ring
 export model_psd_variables_as_free_variables
 
 
-export PrimalSolution, DualSolution, matrixvar, freevar, slacks, matrixvars, freevars
+export DualSolution, PrimalSolution, matrixvar, freevar, slacks, matrixvars, freevars
 
-export vectorize, as_dual_solution, blocksizes, addconstraint!
+export vectorize, as_primal_solution, blocksizes, addconstraint!
 
 export linearsystem, objvalue, partial_linearsystem
 export RoundingSettings, linearsystem_coefficientmatching
@@ -71,6 +73,12 @@ include("basesandsamples.jl")
 
 include("SDPAtoCLRS.jl")
 
-include("precompile.jl")
+# include("MOI_wrapper/MOI_wrapper.jl")
+
+# include("precompile.jl")
+
+# for MOI/JuMP:
+global Optimizer
+
 
 end
