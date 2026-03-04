@@ -187,7 +187,12 @@ function solvesdp(
         Arblib.mul!(Y.blocks[j].blocks[l],Y.blocks[j].blocks[l], omega_d)
     end
     if !isnothing(dualsol) && !isnothing(primalsol)
-        x = ArbRefMatrix(dualsol.x, prec=prec)
+        # order_c goes from (j,sampleindex) to index_in_sdp
+        constraint_indices = sort(collect(keys(sdp.order_c)))
+        for (j,l) in constraint_indices
+            idx = sdp.order_c[(j,l)]
+            x[idx] = dualsol.x[j][l]
+        end
         Arblib.get_mid!(x, x)
         for j in eachindex(sdp.matrix_coeff_names)
             for k in eachindex(sdp.matrix_coeff_names[j])

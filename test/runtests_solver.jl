@@ -150,6 +150,15 @@ using AbstractAlgebra: RealField
         end
     end
 
+    @testset "Warmstart" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint])
+        _,dualsol,primalsol,_ = solvesdp(problem, duality_gap_threshold=1e-5)
+        status, dualsol2, primalsol2, _ = solvesdp(problem; primalsol, dualsol, duality_gap_threshold=1e-10)
+        @test isapprox(objvalue(problem, primalsol), objvalue(problem, primalsol2), atol=1e-4)
+    end
+
 
     @testset "SampledMPolyElem" begin #this is mostly tested through the examples too
         R, (x,) = polynomial_ring(RealField, ["x"])
