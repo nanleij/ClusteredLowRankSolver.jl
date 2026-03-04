@@ -19,6 +19,7 @@ makedocs(plugins=[bib],
         "Solving" => "solving.md",
         "Saving" => "saving.md",
         "Rounding" => "rounding.md",
+        "JuMP Interface" => "jump.md",
         "SDPA-sparse format" => "sdpa.md",
         "Examples" => [
             "Delsarte LP bound" =>"examples/delsarte.md",
