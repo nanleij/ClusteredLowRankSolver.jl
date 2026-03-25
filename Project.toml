@@ -1,7 +1,7 @@
 name = "ClusteredLowRankSolver"
 uuid = "cadeb640-247c-4e6d-a8b8-270aef5e1f95"
-authors = ["nanleij <38724800+nanleij@users.noreply.github.com> and contributors"]
 version = "2.0.1"
+authors = ["nanleij <38724800+nanleij@users.noreply.github.com> and contributors"]
 
 [deps]
 Arblib = "fb37089c-8514-4489-9461-98f9c8763369"
@@ -30,7 +30,7 @@ MOIExt = "MathOptInterface"
 Arblib = "0.6 - 0.8, 1.0 - 1.7"
 BlockDiagonals = "0.1, 0.2"
 Combinatorics = "1.0, 1.1"
-GenericLinearAlgebra = "0.2, 0.3"
+GenericLinearAlgebra = "0.2, 0.3, 0.4"
 IterTools = "1"
 JuMP = "1.24"
 KrylovKit = "0.5 - 0.10"
