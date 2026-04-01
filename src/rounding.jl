@@ -591,16 +591,31 @@ function detecteigenvectors(dualblock::Matrix{T}, primalblock::Matrix{T};
 
     #TODO: check out whether we can do this with LU; 
     # I think the main problem is handling small numbers (considering <settings.kernel_errbound to be 0)
-    RowEchelon.rref!(mat, settings.kernel_errbound)
-    
-    #keep only the nonzero rows; those are a basis for the kernelvectors
-    vecs = [mat[i, :] for i in axes(mat,1) if norm(mat[i, :]) > settings.kernel_errbound]
+    # RowEchelon.rref!(mat, settings.kernel_errbound)
+    # mat[:, p] = Q * R. Then the nonzero rows of R are of the form [R1 R2] with R1 a upper triangular matrix and R2 typically dense
+    # so R1 \ [R1 R2] = [I R1\R2] gives the reduced row-echelon form (hopefully numerically more stable)
+    Q, R, p = qr(mat, ColumnNorm())
+    maxr = findlast(i->(abs(R[i,i]) > settings.kernel_errbound), 1:minimum(size(R)))
+    if !isnothing(maxr)
+        Rp = R[1:maxr, 1:maxr] \  R[1:maxr, :]
+        pinv = [findfirst(==(i), p) for i=1:length(p)]
+        vecs = [Rp[i, pinv] for i=1:maxr]
+    else # no entries with R[i,i] > 0, so no kernel vectors
+        vecs = Vector{BigFloat}[]
+    end
+    # keep only the nonzero rows; those are a basis for the kernelvectors
+    # vecs = [mat[i, :] for i in axes(mat,1) if norm(mat[i, :]) > settings.kernel_errbound]
     @assert all(maximum(abs.(primalblock * v)) < settings.kernel_errbound for v in vecs)
     
     #check whether the dimensions of the non-kernel vectors add up to the ambient dimension
     if check_dimensions
         mat2 = copy(primalblock)
-        RowEchelon.rref!(mat2, settings.kernel_errbound)
+        Q, R, p = qr(mat2, ColumnNorm())
+        nonzeros = findlast(i->(abs(R[i,i]) > settings.kernel_errbound), 1:minimum(size(R)))
+        if isnothing(nonzeros)
+            nonzeros = 0
+        end
+        # RowEchelon.rref!(mat2, settings.kernel_errbound)
         nonzeros = [i for i in axes(mat2, 1) if norm(mat[i,:])  > settings.kernel_errbound]
         @assert length(vecs) + length(nonzeros) == size(primalblock,1)
     end

@@ -10,13 +10,16 @@ function select_vals(dualsol::DualSolution{T}, primalsol::PrimalSolution{T}, max
             end
             m = Matrix(transpose(tmp.U[:, end-num_evs+1:end]))
         end
-        m = RowEchelon.rref!(copy(m), valbound)
-        vecs = [m[i, :] for i in axes(m,1) if norm(m[i, :]) > valbound]
-        if length(vecs) == 0
-            continue
-        end
-        idxs = [findfirst(x->abs(x)>valbound, v[length(vecs)+1:end]) for v in vecs]
-        vals = [vecs[i][length(vecs)+idxs[i]] for i in eachindex(vecs) if !isnothing(idxs[i])]
+        Q, R, p = qr(m, ColumnNorm())
+        maxr = findlast(i->(abs(R[i,i]) > errbound), 1:minimum(size(R)))
+
+        isnothing(maxr) && continue
+
+        Rp = R[1:maxr, 1:maxr] \  R[1:maxr, :]
+        vecs = [Rp[i, :] for i=1:maxr]
+
+        idxs = [findfirst(x->abs(x)>valbound, Rp[i,length(vecs)+1:end]) for i=1:maxr]
+        vals = [Rp[i, length(vecs)+idxs[i]] for i=1:maxr if !isnothing(idxs[i])]
         for v in vals
             for d = 1:max_d
                 coeffs = nothing

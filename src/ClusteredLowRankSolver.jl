@@ -12,7 +12,6 @@ const RF = Nemo.AbstractAlgebra.RealField # Nemo realfield is ArbField(64), this
 using KrylovKit
 
 using Random #for randomly choosing columns in the rounding procedure
-using RowEchelon #for detecting kernel vectors in rounding.jl
 
 # import AbstractAlgebra
 import LinearAlgebra: dot, transpose, issymmetric
@@ -62,6 +61,7 @@ include("interface.jl")
 include("tools.jl")
 
 include("threadinginfo.jl")
+include("pre_postprocessing.jl")
 include("solver.jl")
 include("approximate_fekete.jl") #I think this is better than having another auxiliary package
 include("checks.jl")
@@ -73,9 +73,7 @@ include("basesandsamples.jl")
 
 include("SDPAtoCLRS.jl")
 
-# include("MOI_wrapper/MOI_wrapper.jl")
-
-# include("precompile.jl")
+include("precompile.jl")
 
 # for MOI/JuMP:
 global Optimizer

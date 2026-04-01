@@ -37,7 +37,16 @@ using AbstractAlgebra: RealField
         @test objvalue(oldproblem, primalsol1) ≈ objvalue(newproblem, primalsol2) atol=1e-10
     end
 
-    @testset "saving" begin
+    @testset "Options" begin
+        status, _, _, _ = solvesdp(oldproblem, need_primal_feasible=true)
+        @test status isa PrimalFeasible || status isa Feasible || status isa NearOptimal || status isa Optimal
+        status, _ = solvesdp(oldproblem, need_dual_feasible=true)
+        @test status isa DualFeasible || status isa Feasible || status isa NearOptimal || status isa Optimal
+        _, _, primalsol, _ = solvesdp(oldproblem, preprocess=false)
+        @test objvalue(oldproblem, primalsol) ≈ objvalue(oldproblem, primalsol1) atol=1e-10 
+    end
+
+    @testset "Saving" begin
         obj = Objective(0, Dict(:z=> hcat([1])), Dict())
         constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
         problem = Problem(Maximize(obj), [constraint])
@@ -231,6 +240,63 @@ using AbstractAlgebra: RealField
         @test check_problem(problem)
         sdp = ClusteredLowRankSDP(problem)
         @test check_sdp!(sdp)
+    end
+
+    @testset "Linear dependencies" begin
+        cs1 = Constraint(1, Dict(:X=>[1;;]), Dict(:x=>1, :y=>1))
+        cs2 = Constraint(2, Dict(:X=>[1;;]), Dict(:x=>2, :y=>3))
+        o = Objective(1, Dict(:X=>[1;;]), Dict())
+        prob = Problem(Minimize(o), [cs1, cs2])
+        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10)
+        @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
+        @test norm(slacks(prob, primalsol)) < 1e-5
+        
+        #no PSD variable
+        cs3 = Constraint(1, Dict(), Dict(:x=>2))
+        prob = Problem(Minimize(o), [cs1, cs2, cs3])
+        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10)
+        @test objvalue(prob, primalsol) ≈ 5//4 atol=1e-5 
+        @test norm(slacks(prob, primalsol)) < 1e-5
+
+        # multiple of cs1, so we get a 0=0 in the free variable part
+        cs4 = Constraint(2, Dict(:X=>[2;;]), Dict(:x=>2, :y=>2))
+        prob = Problem(Minimize(o), [cs1, cs2, cs4])
+        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10)
+        @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
+        @test norm(slacks(prob, primalsol)) < 1e-5
+
+        # infeasible: same psd part, same free part, but different constant
+        cs5 = Constraint(4, Dict(:X=>[1;;]), Dict(:x=>1, :y=>1))
+        prob = Problem(Minimize(o), [cs1, cs2, cs5])
+        @test_throws ErrorException solvesdp(prob)
+
+        # lin dep free vars
+        cs6 = Constraint(1, Dict(:Y=>[1;;]), Dict(:x=>2, :y=>2))
+        prob = Problem(Minimize(o), [cs1, cs6])
+        _, _, primalsol, _ = solvesdp(prob)
+        @test objvalue(prob, primalsol) ≈ 1.5 atol=1e-5 
+        @test norm(slacks(prob, primalsol)) < 1e-5
+
+        #first lin dep constraints, then a lin indep constraint
+        # with low rank stuff
+        cs7 = Constraint(1, Dict(:Y=>LowRankMatPol([1], [[1]])), Dict(:z=>1))
+        prob = Problem(Minimize(Objective(1, Dict(:X=>[1;;], :Y=>[1;;]), Dict())), [cs1, cs2, cs3, cs4, cs7])
+        _, _, primalsol, _ = solvesdp(prob)
+        @test objvalue(prob, primalsol) ≈ 1.25 atol=1e-5 
+        @test norm(slacks(prob, primalsol)) < 1e-5
+
+        # free variables in objective that get removed
+        o = Objective(1, Dict(:X=>[1;;]), Dict(:x=>-1, :y=>-2))
+        prob = Problem(Minimize(o), [cs1, cs2])
+        _, _, primalsol, _ = solvesdp(prob)
+        @test objvalue(prob, primalsol) ≈ 0 atol=1e-5 
+        @test norm(slacks(prob, primalsol)) < 1e-5
+
+        # more constraints on the free variables than free variables, with an incompatible constraint
+        cs8 = Constraint(0, Dict(), Dict(:x=>1))
+        cs9 = Constraint(1//2, Dict(), Dict(:y=>1))
+        prob = Problem(Minimize(o), [cs1,cs2,cs8,cs9,cs5])
+        @test_throws ErrorException solvesdp(prob) 
     end
 end
 
