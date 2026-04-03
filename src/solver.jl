@@ -66,6 +66,7 @@ Keyword arguments:
   - `primalsol` (default: `nothing`): start from the solution `(dualsol, primalsol)` if both `dualsol` and `primalsol` are given
   - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is dual and primal feasible
   - `save_settings` (default: SaveSettings(), not saved): use the SaveSettings to determine whether and how often the iterates are saved during the algorithm. 
+  - `preprocess` (default: `true`): Preprocess the SDP to detect and remove linear dependencies in the constraints and free variables. 
 """
 function solvesdp(
     problem::Problem;

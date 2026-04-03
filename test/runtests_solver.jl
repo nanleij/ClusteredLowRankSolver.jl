@@ -297,6 +297,16 @@ using AbstractAlgebra: RealField
         cs9 = Constraint(1//2, Dict(), Dict(:y=>1))
         prob = Problem(Minimize(o), [cs1,cs2,cs8,cs9,cs5])
         @test_throws ErrorException solvesdp(prob) 
+
+        #only psd variables, lin dep constraints in the variables, but different rhs
+        cs10 = Constraint(1, Dict(:X=>[1;;]), Dict())
+        cs11 = Constraint(0, Dict(:X=>[1;;]), Dict())
+        prob = Problem(Minimize(Objective(0, Dict(:X=>[1;;]), Dict())), [cs10, cs11])
+        @test_throws ErrorException solvesdp(prob)
+        prob = Problem(Minimize(Objective(0, Dict(:X=>[1;;]), Dict())), [cs10, cs10])
+        _, _, primalsol, _ = solvesdp(prob)
+        @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
+
     end
 end
 

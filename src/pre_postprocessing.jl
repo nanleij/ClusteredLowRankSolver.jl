@@ -23,7 +23,7 @@ function find_linear_dependencies(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt
     # 2) get linear dependencies through QR factorizations. 
     # for the constraints we only have to know which ones are linear dependent in the constraint matrices (for PSD vars)
     # but we have to use that to check whether we get linear constraints on the free variables
-    # for the variables, we have to know the actual relations
+    # for the free variables, we have to know the actual relations
     mfv = T.(vcat(sdp.B...))
     mpsd = hcat([vectorize_constraint(sdp, (j,p), subblocksizes; T) for j in eachindex(sdp.B) for p in axes(sdp.B[j], 1)]...) # columns are constraints
     cs_idx = [(j,p) for j in eachindex(sdp.B) for p in axes(sdp.B[j], 1)]
@@ -82,10 +82,14 @@ function find_linear_dependencies(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt
         end
         # if istart == nothing (still), we have size(R, 1) >= size(R,2) = 0, so no free variables in the problem
     end
-    #TODO: check whether this goes right if R is a different size than mfv, or that we need a different condition to check this
     if !isnothing(istart) && istart <= length(rhs_changed)
         # rhs_changed = rhs_changed[1:istart-1]
         if !all(x->(abs(x) < tol), rhs_changed[istart:end]) 
+            # some 'zero' constraint has nonzero rhs, so infeasible SDP
+            error("Linear dependent constraint(s) resulting in a constraint 0 = b_i with b_i nonzero.")
+        end
+    elseif isnothing(istart) # no free variables, but possibly still a rhs_change corresponding to linearly dependent constraints
+        if !all(x->(abs(x) < tol), rhs_changed) 
             # some 'zero' constraint has nonzero rhs, so infeasible SDP
             error("Linear dependent constraint(s) resulting in a constraint 0 = b_i with b_i nonzero.")
         end
@@ -200,7 +204,7 @@ function remove_lindep_constraints!(sdp::ClusteredLowRankSDP, cs)
             for bl in eachindex(sdp.A[j][l])
                 for p in ps
                     delete!(sdp.A[j][l][bl], p)
-                    #TODO: we can consider if renaming the constraints is better or worse than using an additional dict for indexing in the solver
+                    #TODO: is renaming the constraints better or worse than using an additional dict for indexing in the solver?
                 end 
             end
         end
@@ -221,7 +225,6 @@ function remove_lindep_freevars!(sdp::ClusteredLowRankSDP,  (fv_zeros, fv_nonzer
     pinv = [findfirst(==(i), vcat(nf_vars, ff_vars)) for i=1:length(nf_vars)+length(ff_vars)]
     changemat = vcat(-Rref, Matrix{T}(I, length(ff_vars), length(ff_vars)))[pinv, :] #variables end up in the order of ff_vars
     rhs_changed_ext = vcat(rhs_changed, zeros(BigFloat, length(ff_vars)))[pinv]
-    #TODO change to Arblib.jl stuff where possible. 
     for j in eachindex(sdp.B)
         AL.sub!(sdp.c[j], sdp.c[j], ArbRefMatrix(sdp.B[j][:, nf_vars] * rhs_changed_ext[nf_vars]); prec)
         sdp.B[j] = ArbRefMatrix(sdp.B[j] * changemat[:, fv_nonzeros]; prec)
@@ -289,7 +292,9 @@ function preprocess!(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt(eps(T)))
     end
 
     remove_lindep_constraints!(sdp, cs)
-    remove_lindep_freevars!(sdp, var_rels; T)
+    if total_free_removed > 0 # if nothing removed, then we also don't have to change the SDP
+        remove_lindep_freevars!(sdp, var_rels; T)
+    end
     # give warnings when constraints/variables are found to be dependent
     if length(cs) > 0
         @warn "$(length(cs)) constraints were removed due to linear dependencies."
