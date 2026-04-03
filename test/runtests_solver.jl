@@ -46,6 +46,7 @@ using AbstractAlgebra: RealField
         status, _ = solvesdp(problem, need_dual_feasible=true)
         @test status isa DualFeasible || status isa Feasible || status isa NearOptimal || status isa Optimal
         _, _, primalsol, _ = solvesdp(problem, preprocess=false)
+        _, _, primalsol1, _ = solvesdp(problem, preprocess=true)
         @test objvalue(problem, primalsol) ≈ objvalue(problem, primalsol1) atol=1e-10 
     end
 
