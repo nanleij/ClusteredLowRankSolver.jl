@@ -38,12 +38,15 @@ using AbstractAlgebra: RealField
     end
 
     @testset "Options" begin
-        status, _, _, _ = solvesdp(oldproblem, need_primal_feasible=true)
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint])
+        status, _, _, _ = solvesdp(problem, need_primal_feasible=true)
         @test status isa PrimalFeasible || status isa Feasible || status isa NearOptimal || status isa Optimal
-        status, _ = solvesdp(oldproblem, need_dual_feasible=true)
+        status, _ = solvesdp(problem, need_dual_feasible=true)
         @test status isa DualFeasible || status isa Feasible || status isa NearOptimal || status isa Optimal
-        _, _, primalsol, _ = solvesdp(oldproblem, preprocess=false)
-        @test objvalue(oldproblem, primalsol) ≈ objvalue(oldproblem, primalsol1) atol=1e-10 
+        _, _, primalsol, _ = solvesdp(problem, preprocess=false)
+        @test objvalue(problem, primalsol) ≈ objvalue(problem, primalsol1) atol=1e-10 
     end
 
     @testset "Saving" begin
