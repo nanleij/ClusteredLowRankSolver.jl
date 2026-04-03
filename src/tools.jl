@@ -90,7 +90,7 @@ function approx_cholesky!(A::ArbRefMatrix;prec=precision(A))
         end
         # Arblib.get_mid!(A[i,i], A[i,i])
         if Arblib.is_positive(A[i,i]) == 0
-            @show A[i,i], i
+            # @show A[i,i], i
             return 0
         end
         approx_sqrt!(A[i,i], A[i,i], prec)

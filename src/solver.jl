@@ -66,6 +66,7 @@ Keyword arguments:
   - `primalsol` (default: `nothing`): start from the solution `(dualsol, primalsol)` if both `dualsol` and `primalsol` are given
   - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is dual and primal feasible
   - `save_settings` (default: SaveSettings(), not saved): use the SaveSettings to determine whether and how often the iterates are saved during the algorithm. 
+  - `preprocess` (default: `true`): Preprocess the SDP to detect and remove linear dependencies in the constraints and free variables. 
 """
 function solvesdp(
     problem::Problem;
@@ -119,6 +120,7 @@ function solvesdp(
     safe_step::Bool=true,
     correctoronly=false,
     save_settings::SaveSettings=SaveSettings(),
+    preprocess=true, #remove linear dependent constraints and free variables
     #experimental & testing:
     matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
 	testing=false, # print the times of the first two iterations. This is for testing purposes
@@ -151,7 +153,18 @@ function solvesdp(
             # with α(M,dM) =  max(0, -eigmin(M)/eigmin(dM)) ( = 0 if eigmin(dM)> 0).
         # 8): do the steps: x,X -> x,X + α_p dx,dX and y,Y -> y,Y + α_d dy,dY
     # Repeat from step 2
-
+    if preprocess
+        num_constr = [size(sdp.B[j], 1) for j in eachindex(sdp.B)]
+        cs, var_rels = preprocess!(sdp)
+        c_removed = [Int[] for j in eachindex(sdp.B)]
+        for (i,j,p) in cs
+            push!(c_removed[j], p)
+        end
+        cs_leftover = [[pi for pi=1:num_constr[j] if !(pi in c_removed[j])] for j in eachindex(sdp.B)]
+        cs_map = [Dict(v=>k for (k,v) in enumerate(cs_leftover[j])) for j in eachindex(sdp.B)]
+    else
+        cs_map = [i=1:size(sdp.B[j],1) for j in eachindex(sdp.B)]
+    end
     # get the blocksizes to initiate the variables
     subblocksizes = [[0 for l in eachindex(sdp.A[j])] for j in eachindex(sdp.A)]
     for j in eachindex(sdp.A)
@@ -187,6 +200,7 @@ function solvesdp(
         Arblib.mul!(Y.blocks[j].blocks[l],Y.blocks[j].blocks[l], omega_d)
     end
     if !isnothing(dualsol) && !isnothing(primalsol)
+        #TODO: update for preprocessing
         # order_c goes from (j,sampleindex) to index_in_sdp
         constraint_indices = sort(collect(keys(sdp.order_c)))
         for (j,l) in constraint_indices
@@ -307,7 +321,7 @@ function solvesdp(
     dual_gap = compute_duality_gap(sdp, x, y, Y)
     #NOTE: P, p and d are as originally introduced in the paper, instead of changed to D, d, p as in the printing.
     time_res = @elapsed begin
-        compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
+        compute_residuals!(sdp, x, X, y, Y, P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks, cs_map)
     end
     dual_error = compute_dual_error(P, p)
     primal_error = compute_primal_error(d)
@@ -390,14 +404,15 @@ function solvesdp(
         allocs[1] += @allocated begin
             time_decomp = @elapsed begin
                 time_schur, time_cholS, time_LinvB, time_Q, time_cholQ =
-                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, tempX, threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right,high_ranks, part_r, prec=matmul_prec)
+                    compute_T_decomposition!(sdp, S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv, LinvB,Q, tempX, 
+                        threadinginfo,leftvecs_pairings,rightvecs_pairings,pointers_left,pointers_right,high_ranks, part_r, cs_map, prec=matmul_prec)
             end
         end
 
         # Compute the residuals
         allocs[2] += @allocated begin
             time_res = @elapsed begin
-                compute_residuals!(sdp, x, X, y, (Y, A_Y), P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks)
+                compute_residuals!(sdp, x, X, y, (Y, A_Y), P, p, d, threadinginfo,vecs_left,vecs_right,high_ranks, cs_map)
             end
         end
 
@@ -405,7 +420,7 @@ function solvesdp(
         allocs[3] += @allocated begin
             time_predictor_dir = @elapsed begin
                 times_predictor_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, tempX, threadinginfo, S, LinvB,Q, vecs_left,vecs_right,high_ranks)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, tempX, threadinginfo, S, LinvB,Q, vecs_left,vecs_right,high_ranks, cs_map)
             end
         end
 
@@ -436,7 +451,7 @@ function solvesdp(
         allocs[4] += @allocated begin
             time_corrector_dir = @elapsed begin
                 times_corrector_in =
-                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, tempX, threadinginfo, S, LinvB,Q, vecs_left,vecs_right,high_ranks)
+                    compute_search_direction!(sdp,dx, dX, dy, dY,  P, p, d, R, X_inv, Y, tempX, threadinginfo, S, LinvB,Q, vecs_left,vecs_right,high_ranks, cs_map)
             end
         end
 
@@ -504,7 +519,10 @@ function solvesdp(
                 save_count += 1
                 save_name = replace(save_settings.save_name, "#" => save_count) * ".jls"
             end
-            dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
+            if preprocess
+                xbf, ybf = postprocess(x,y, cs, var_rels)
+            end
+            dualsol, primalsol = solution_to_bigfloat(X, xbf, Y, ybf, sdp)
             serialize(save_name, (dualsol, primalsol))
             save_now = false
         end
@@ -574,24 +592,31 @@ function solvesdp(
         iter += 1
     end
     catch e
-        println("A(n) $(typeof(e)) occurred.")
         if isa(e, CompositeException)
             exception_found = false
+            es = []
             for exception in e
-                if isa(exception, SolverFailure) || isa(exception, InterruptException)
-                    e = exception
+                if isa(exception, SolverFailure) || isa(exception, InterruptException) 
+                    push!(es, exception)
                     exception_found = true
-                    break
+                elseif isa(exception, TaskFailedException)
+                    push!(es, exception.task.result)
+                    exception_found = true
                 end
+            end 
+            if exception_found && length(es) == 1
+                println("$(typeof(es[1])):")
+            elseif exception_found
+                println("The following errors happened: $(typeof.(es))")
             end
-            if exception_found
-                println("This was probably caused by $(typeof(e))")
-            else
-                @show e
-            end
+        else
+            println("A(n) $(typeof(e)) occurred.")
+            es = [e]
         end
-        if hasfield(typeof(e),:msg)
-            println(e.msg)
+        for e in es
+            if hasfield(typeof(e),:msg)
+                println(e.msg)
+            end
         end
         println("We return the current solution and optimality status.")
         error_code[1] = 1 #general errors
@@ -603,6 +628,9 @@ function solvesdp(
     dual_gap = compute_duality_gap(d_obj, p_obj)
     dualobj = BigFloat(d_obj)
     primalobj = BigFloat(p_obj)  
+    if preprocess
+        x, y = postprocess(x,y, cs, var_rels)
+    end
     dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
 
     if !isnothing(save_settings.time_interval) || (!isnothing(save_settings.iter_interval) && last_save_iteration != save_iteration_count)
@@ -832,7 +860,7 @@ function dot_c(sdp, x)
 end
 
 """Compute the primal residue d = c - <A_*, Y> - By"""
-function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ranks)
+function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ranks, cs_map)
     cur_idx = 0
     w = ArbRefMatrix(0, 0, prec=precision(y))
     for j in eachindex(sdp.c)
@@ -846,14 +874,14 @@ function calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ra
         cur_idx += size(sdp.c[j],1)
     end
 
-    Arblib.sub!(d,d,trace_A(sdp,Y,leftvecs_pairings,rightvecs_pairings,high_ranks))
+    Arblib.sub!(d,d,trace_A(sdp,Y,leftvecs_pairings,rightvecs_pairings,high_ranks, cs_map))
     return d
 end
 
 """Compute the residuals P,p and d."""
-function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pairings,rightvecs_pairings,high_ranks)
+function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pairings,rightvecs_pairings,high_ranks, cs_map)
     # P = ∑_i x_i A_i - X - C, (+ C if we are minimizing)
-    compute_weighted_A!(P, sdp, x,leftvecs_pairings,high_ranks)
+    compute_weighted_A!(P, sdp, x,leftvecs_pairings,high_ranks, cs_map)
     Threads.@threads for (j,l) in threadinginfo.jl_order
         Arblib.sub!(P.blocks[j].blocks[l],P.blocks[j].blocks[l],X.blocks[j].blocks[l])
         if sdp.maximize  # normal
@@ -865,7 +893,7 @@ function compute_residuals!(sdp, x, X, y, Y, P, p, d,threadinginfo,leftvecs_pair
     end
 
     # d = c - <A_*, Y> - By
-    calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ranks)
+    calculate_res_d!(sdp,y,Y,d,leftvecs_pairings,rightvecs_pairings,high_ranks, cs_map)
     Arblib.get_mid!(d, d)
 
     # p = b - B^T x (-b if we are minimizing)
@@ -1031,7 +1059,8 @@ function precompute_matrices_bilinear_pairings(sdp, subblocksizes; prec)
 end
 
 """Compute S, integrated with the precomputing of the bilinear pairings"""
-function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,pointers_left,pointers_right,high_ranks, tempX, temppart_r;matmul_prec=precision(S[1]))
+function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear_pairings_Xinv, leftvecs,rightvecs,
+        pointers_left,pointers_right,high_ranks, tempX, temppart_r, cs_map;matmul_prec=precision(S[1]))
     #NOTE: somewhere in this function, the memory is allocated but not always released. Goes from 13% before to 20% just after this function.
     #   Apparently, calling 'ccall(:malloc_trim, Cvoid, (Cint,), 0)' could free (some) more memory
     prec = precision(Y)
@@ -1068,9 +1097,9 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
                     matmul_threaded!(tempX[2].blocks[j].blocks[l], tempX[1].blocks[j].blocks[l], Y.blocks[j].blocks[l], prec=matmul_prec)
 
                     # We only do the upper triangular part here, so q >= p
-                    qs = [q for q in keys(sdp.A[j][l][1,1]) if q >= p]
-                    Threads.@threads for q in qs
-                        Arblib.add!(S[j][p,q],S[j][p,q], dot(sdp.A[j][l][1,1][q],tempX[2].blocks[j].blocks[l]))
+                    qs = [(cs_map[j][q], q) for q in keys(sdp.A[j][l][1,1]) if cs_map[j][q] >= cs_map[j][p]]
+                    Threads.@threads for (qi,q) in qs
+                        Arblib.add!(S[j][cs_map[j][p],qi],S[j][cs_map[j][p],qi], dot(sdp.A[j][l][1,1][q],tempX[2].blocks[j].blocks[l]))
                     end
                 end
             else # low rank case
@@ -1197,7 +1226,8 @@ function compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y, bilinear
 end
 
 """Compute the decomposition of [S B; B^T 0]"""
-function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, tempX, threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks, part_r; prec=precision(S[1]))
+function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,LinvB,Q, tempX, 
+        threadinginfo,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks, part_r, cs_map; prec=precision(S[1]))
     # 1) pre compute bilinear basis
     # 2) compute S
     # 3) compute cholesky decomposition S = LL^T
@@ -1205,7 +1235,8 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 
     # 1,2) compute the bilinear pairings and S, integrated. (per j,l, compute first pairings then S[j] part)
     time_schur = @elapsed begin
-        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,pointers_right,high_ranks,tempX, part_r, matmul_prec=prec)
+        compute_S_integrated!(S,sdp,A_Y, X_inv, Y,bilinear_pairings_Y,bilinear_pairings_Xinv,leftvecs,rightvecs,pointers_left,
+            pointers_right,high_ranks,tempX, part_r, cs_map, matmul_prec=prec)
     end
 
     #3) cholesky decomposition of S
@@ -1215,7 +1246,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
             succes = approx_cholesky!(S[j])
             Arblib.get_mid!(S[j],S[j])
             if succes == 0
-                throw(SolverFailure("S was not decomposed succesfully in block $j, try again with higher precision"))
+                throw(SolverFailure("S was not decomposed succesfully in block $j, try again with higher precision. If this occurred in the first iteration, remove linear dependencies in the PSD part of the constraints or turn preprocessing on."))
             end
         end
     end
@@ -1243,7 +1274,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
         succes = approx_cholesky!(Q)
         Arblib.get_mid!(Q,Q)
         if succes == 0
-            throw(SolverFailure("Q was not decomposed correctly. Try restarting with a higher precision."))
+            throw(SolverFailure("Q was not decomposed correctly. Try restarting with a higher precision. If this occurred in the first iteration, remove linear dependencies between free variables or turn preprocessing on."))
         end
     end
 
@@ -1256,7 +1287,7 @@ function compute_T_decomposition!(sdp,S,A_Y,X_inv, Y,bilinear_pairings_Y,bilinea
 end
 
 """Compute the vector <A_*,Z> = Tr(A_* Z) for one or all constraints"""
-function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
+function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks, cs_map)
     #Assumption: Z is symmetric
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(Z))
     Arblib.zero!(result)
@@ -1270,7 +1301,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
             if high_ranks[j][l]
                 #high rank matrices only have 1 subblock
                 for p in keys(sdp.A[j][l][1,1])
-                    Arblib.add!(result[j_idx + p], dot(sdp.A[j][l][1,1][p], Z.blocks[j].blocks[l]),result[j_idx + p])  
+                    Arblib.add!(result[j_idx + cs_map[j][p]], dot(sdp.A[j][l][1,1][p], Z.blocks[j].blocks[l]),result[j_idx + cs_map[j][p]])  
                 end
             else
                 ones = ArbRefMatrix(1,delta,prec=precision(Z))
@@ -1323,7 +1354,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
                             if r != s #We need to take both sides of the matrix into account
                                 Arblib.mul!(res,res,2)
                             end
-                            Arblib.add!(result[j_idx+p,1],res,result[j_idx+p,1])
+                            Arblib.add!(result[j_idx+cs_map[j][p],1],res,result[j_idx+cs_map[j][p],1])
                         end
                     end
                 end
@@ -1334,7 +1365,7 @@ function trace_A(sdp, Z::BlockDiagonal,vecs_left,vecs_right,high_ranks)
     return result
 end
 
-function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks)
+function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks, cs_map)
     #Here we have precomputed v^T A v already, so we dont need the vectors. But it also doesnt cost extra time, so for ease of programming we allow them
     # So what we still need to do is get the right entries from A_Y, multiply them by the right eigenvalues and sum them to get entries corresponding to (j,p)
     result = ArbRefMatrix(sum(size.(sdp.c,1)), 1, prec = precision(Y))
@@ -1346,7 +1377,7 @@ function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks)
             if high_ranks[j][l]
                 #high rank matrices have only one subblock
                 for p in keys(sdp.A[j][l][1,1])
-                    Arblib.add!(result[j_idx + p], dot(sdp.A[j][l][1,1][p],Y.blocks[j].blocks[l]),result[j_idx + p])  
+                    Arblib.add!(result[j_idx + cs_map[j][p]], dot(sdp.A[j][l][1,1][p],Y.blocks[j].blocks[l]),result[j_idx + cs_map[j][p]])  
                 end
             else
                 for r=1:size(sdp.A[j][l],1)
@@ -1364,7 +1395,7 @@ function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks)
                             if r!=s #We take both s,r and r,s into account
                                 Arblib.mul!(tot,tot,2)
                             end
-                            Arblib.add!(result[j_idx+p,1],tot,result[j_idx+p,1])
+                            Arblib.add!(result[j_idx+cs_map[j][p],1],tot,result[j_idx+cs_map[j][p],1])
                         end
                     end
                 end
@@ -1376,7 +1407,7 @@ function trace_A(sdp, (Y, A_Y), leftvecs_pairings,rightvecs_pairings,high_ranks)
 end
 
 """Set initial_matrix to ∑_i a_i A_i"""
-function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
+function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks, cs_map)
     # initial_matrix is a BlockDiagonal matrix of BlockDiagonal matrices of ArbMatrices
     # We add the contributions to the (blocked) upper triangular, then symmetrize
     Q = ArbRefMatrix(0,0,prec=precision(a))
@@ -1391,7 +1422,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
             if high_ranks[j][l]
                 #high rank matrices only have one subblock
                 for p in keys(sdp.A[j][l][1,1])
-                    Arblib.addmul!(initial_matrix.blocks[j].blocks[l], sdp.A[j][l][1,1][p], a[j_idx+p,1])
+                    Arblib.addmul!(initial_matrix.blocks[j].blocks[l], sdp.A[j][l][1,1][p], a[j_idx+cs_map[j][p],1])
                 end
             else              
                 delta = div(size(initial_matrix.blocks[j].blocks[l],1),size(sdp.A[j][l],1))
@@ -1410,7 +1441,7 @@ function compute_weighted_A!(initial_matrix, sdp, a,vecs_left,high_ranks)
                         idx = 1
                         for p in keys(sdp.A[j][l][r,s])
                             for rnk in eachindex(sdp.A[j][l][r,s][p].lambda)
-                                Arblib.mul!(cur,a[j_idx+p,1],sdp.A[j][l][r,s][p].lambda[rnk])
+                                Arblib.mul!(cur,a[j_idx+cs_map[j][p],1],sdp.A[j][l][r,s][p].lambda[rnk])
                                 Arblib.mul!(vec, sdp.A[j][l][r,s][p].vs[rnk],cur)
                                 mywindow_init!(w, vecs_right, idx-1, 0,idx, delta)
                                 Arblib.transpose!(w, vec)
@@ -1457,6 +1488,7 @@ function compute_search_direction!(
     leftvecs_pairings,
     rightvecs_pairings, 
     high_ranks,
+    cs_map,
 )
     prec = precision(Y)
     # using the decomposition, compute the search directions
@@ -1488,7 +1520,7 @@ function compute_search_direction!(
         #rhs_x = -d - <A_*,Z>
         #we use dx for rhs_x
         Arblib.neg!(dx,d)
-        Arblib.sub!(dx,dx,trace_A(sdp, dY,leftvecs_pairings,rightvecs_pairings,high_ranks))
+        Arblib.sub!(dx,dx,trace_A(sdp, dY,leftvecs_pairings,rightvecs_pairings,high_ranks, cs_map))
         Arblib.get_mid!(dx, dx)
     end
 
@@ -1553,7 +1585,7 @@ function compute_search_direction!(
     time_dX = @elapsed begin
         #dX = ∑_i dx_i A_i + P
         #compute the sum
-        compute_weighted_A!(dX, sdp, dx,leftvecs_pairings,high_ranks)
+        compute_weighted_A!(dX, sdp, dx,leftvecs_pairings,high_ranks, cs_map)
         #add P
         Threads.@threads for (j,l) in threadinginfo.jl_order
             Arblib.add!(dX.blocks[j].blocks[l],dX.blocks[j].blocks[l],P.blocks[j].blocks[l])

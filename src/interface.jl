@@ -804,7 +804,7 @@ end
 ### Clustered low rank SDP ###
 ##############################
 
-struct ClusteredLowRankSDP
+mutable struct ClusteredLowRankSDP #for preprocessing, we might need to change the b matrix
     maximize::Bool
     constant::Arb #constant is part of the objective, so maybe we should have constant, C, b, A, B, c or something like that.
     A::Vector{Vector{Matrix{Dict{Int,Union{LowRankMat, ArbRefMatrix}}}}}         # A[j][l][r,s][p]
@@ -847,15 +847,20 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
 
     # clusters will be a vector of vectors containing block labels (so name(block))
     #NOTE: if a constraint doesn't have PSD variables, this creates an empty cluster.
-    clusters = Vector{Any}[]
+    clusters = Vector{Any}[] # vectors with names of variables
     emptyconstraints = Int[]
+    freeconstraints = Int[] # constraints with only free variables
     for constraintindex in eachindex(sos.constraints)
         constraint = sos.constraints[constraintindex]     
         if length(matrixcoeffs(constraint)) == 0 && length(freecoeffs(constraint)) == 0 && iszero(constraint.constant)
             push!(emptyconstraints, constraintindex)
             continue
-        end      
-        @assert length(matrixcoeffs(constraint)) != 0 "Each constraint should contain positive semidefinite matrix variables, which is not the case for constraint $(constraintindex)."
+        end     
+        if length(matrixcoeffs(constraint)) == 0
+            push!(freeconstraints, constraintindex)
+            continue
+        end
+        # @assert length(matrixcoeffs(constraint)) != 0 "Each constraint should contain positive semidefinite matrix variables, which is not the case for constraint $(constraintindex)."
         clusterset = Set{Int}()
         for k in keys(constraint.matrixcoeff)
             for i in eachindex(clusters)
@@ -873,19 +878,19 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
             #remove the clusters which we need to combine from 'clusters', and merge them
             u = union(splice!(clusters, clusterset)...)
             append!(u, [name(k) for k in keys(constraint.matrixcoeff)])
-            push!(clusters, u)
+            push!(clusters, unique(u))
         end
     end
     # sort clusters, to have a consistent order over multiple runs
     sort!(clusters, by = x->(length(x), hash(x)))
 
-    #NOTE: if a constraint doesn't use PSD variables, this will not assign it to a cluster.
     # find out which constraints belong to which cluster
     # we build a vector of vectors containing constraint indices
     cluster_constraint_index = [Int[] for _ in clusters]
     remaining = Int[]
     for constraintindex in eachindex(sos.constraints)
         constraintindex in emptyconstraints && continue
+        constraintindex in freeconstraints && continue
 
         constraint = sos.constraints[constraintindex]
         k = first(keys(constraint.matrixcoeff))
@@ -897,16 +902,13 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
                 break
             end
         end
-        if !found_cluster
-            #this is a constraint without cluster
-            push!(remaining,constraintindex)
-        end
     end
-    if length(remaining)>0
-        # there is at least on constraint which doesn't use PSD variables, we put it in a separate cluster (otherwise we would forget about it)
+    if length(freeconstraints)>0
+        # there is at least one constraint which doesn't use PSD variables, we put it in the first cluster
+        # the solver needs preprocessing with this anyway
         #NOTE: this is untested, since we did not encounter this in any problem
-        @warn "Constraints which do not use SDP variables detected."
-        push!(cluster_constraint_index, remaining)
+        @warn "Constraints which do not use SDP variables detected. Requires preprocessing the SDP to solve."
+        append!(first(cluster_constraint_index), freeconstraints)
     end
     if verbose
         println("Sampling the low rank polynomial matrices...")

@@ -67,8 +67,8 @@ function Base.summary(io::IO, opt::Optimizer)
     if opt.initiated
         return print(io, 
     """ClusteredLowRankSolver with $(length(opt.problem.constraints)) constraints, 
-    $(length(opt.result_data[:primalsol].freevars)) free variables and 
-    $(length(opt.result_data[:primalsol].matrixvars)) psd variables ($(sum(length(opt.block_dims))) entries).
+    $(length(opt.variable_map)- sum(binomial.(opt.block_dims, 2))) free variables and 
+    $(length(opt.block_dims)) psd variables ($(sum(binomial.(opt.block_dims,2))) entries).
     """)
     else 
         return print(io, """Uninitiated ClusteredLowRankSolver""")
@@ -127,7 +127,6 @@ function MOI.set(opt::Optimizer, attr::MOI.RawOptimizerAttribute, value)
 end
 
 function MOI.get(opt::Optimizer, attr::MOI.RawSolver) 
-    # Would want to return Problem, but that gives an error. This is what they expect?
     return opt
 end
 
@@ -484,6 +483,12 @@ function MOI.get(opt::Optimizer, ::MOI.TerminationStatus)
     elseif e == 1
         # we don't distinguish between numerical errors and interrupt
         return MOI.OTHER_ERROR 
+    else # no error, but also not optimal
+        if status isa NearOptimal
+            return MOI.ALMOST_OPTIMAL
+        end
+        # Fallback. No error, so stopped due to some other reason (e.g., need_primal/dual_feasible)
+        return MOI.OTHER_LIMIT 
     end
 end
 function MOI.get(opt::Optimizer, ::MOI.ResultCount)::Int

@@ -64,6 +64,37 @@ obj, X = goemans_williamson(L)
 obj
 ```
 
+The same problem can be implemented using JuMP.jl
+```julia
+using ClusteredLowRankSolver, JuMP, LinearAlgebra
+
+function goemans_williamson_jump(L::Matrix{T}; eps=1e-30) where {T<:Union{BigFloat, Int, Rational{Int}}}
+    n = size(L, 1)
+    
+    model = GenericModel{BigFloat}(ClusteredLowRankSolver.Optimizer)
+    set_attribute(model, "duality_gap_threshold", eps)
+
+    @variable(model, X[1:n, 1:n], PSD)
+    @constraint(model, [X[i,i] for i=1:n] == ones(Int, size(L,1)))
+    @objective(model, Max, 1//4 * dot(X, L))
+
+    optimize!(model)
+    # get the numerical solution matrix and objective
+    value(X) 
+    objective_value(model) 
+
+    # round over Q 
+    # NOTE: whether this is possible depends highly on the input
+    status, problem, esol = exact_solution(model)
+    return objvalue(problem, esol), esol
+end
+
+# try the three-cycle again
+L = [2 -1 -1; -1 2 -1; -1 -1 2]
+obj, X = goemans_williamson_jump(L)
+obj # = 9//4
+```
+
 ### Example 2: Finding the global minimum of a univariate polynomial
 To find the minimum of a polynomial ``f`` of degree ``2d``, one can use the following problem
 ```math

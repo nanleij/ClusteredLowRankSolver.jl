@@ -31,8 +31,6 @@ MOI.Test.runtests(model, MOI.Test.Config(BigFloat, rtol=1e-10, atol=1e-10,exclud
     "test_constraint_PrimalStart_DualStart_SecondOrderCone", 
     # no constraint on a variable. We remove the variable (with warning), they want dual_infeasible
     "test_conic_SecondOrderCone_no_initial_bound", 
-    # linearly dependent variables/constraints: not (yet) supported
-    "test_linear_transform",
     ],
 )
 
