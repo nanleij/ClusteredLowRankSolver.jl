@@ -190,7 +190,7 @@ polyopt_exact(x^2+1, 1) # = (true, 1)
 
 ## Citing ClusteredLowRankSolver and the rounding procedure
 The semidefinite programming solver and the interface (including sampled polynomials) in `ClusteredLowRankSolver.jl` have been developed as part of the paper
- - Nando Leijenhorst and David de Laat, [*Solving clustered low-rank semidefinite programs arising from polynomial optimization*](https://arxiv.org/abs/2202.12077), preprint, 2022. arXiv:2202.12077
+ - Nando Leijenhorst and David de Laat, [*Solving clustered low-rank semidefinite programs arising from polynomial optimization*](https://link.springer.com/article/10.1007/s12532-024-00264-w), Math. Prog. Comp., 16, 503-534 (2024). [arXiv:2202.12077](https://arxiv.org/abs/2202.12077)
 
 The solver was inspired by the more specialized solver
 - David Simmons-Duffin. [*A semidefinite program solver for the conformal bootstrap*](https://link.springer.com/article/10.1007/JHEP06(2015)174). J. High Energy Phys. 174 (2015), [arXiv:1502.02033](https://arxiv.org/abs/1502.02033)
