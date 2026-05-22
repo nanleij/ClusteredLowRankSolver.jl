@@ -35,6 +35,10 @@ using AbstractAlgebra: RealField
         _,_,primalsol1,_ = solvesdp(oldproblem)
         _,_,primalsol2,_ = solvesdp(newproblem)
         @test objvalue(oldproblem, primalsol1) ≈ objvalue(newproblem, primalsol2) atol=1e-10
+
+        sdp = ClusteredLowRankSDP(oldproblem)
+        _,_,primalsol3,_ = solvesdp(sdp)
+        @test objvalue(oldproblem, primalsol3) ≈ objvalue(oldproblem, primalsol1) atol=1e-10
     end
 
     @testset "Options" begin
@@ -246,38 +250,38 @@ using AbstractAlgebra: RealField
         @test check_sdp!(sdp)
     end
 
-    @testset "Linear dependencies" begin
+    @testset "Linear dependencies" begin 
         cs1 = Constraint(1, Dict(:X=>[1;;]), Dict(:x=>1, :y=>1))
         cs2 = Constraint(2, Dict(:X=>[1;;]), Dict(:x=>2, :y=>3))
         o = Objective(1, Dict(:X=>[1;;]), Dict())
         prob = Problem(Minimize(o), [cs1, cs2])
-        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10)
+        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
         @test norm(slacks(prob, primalsol)) < 1e-5
         
         #no PSD variable
         cs3 = Constraint(1, Dict(), Dict(:x=>2))
         prob = Problem(Minimize(o), [cs1, cs2, cs3])
-        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10)
+        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 5//4 atol=1e-5 
         @test norm(slacks(prob, primalsol)) < 1e-5
 
         # multiple of cs1, so we get a 0=0 in the free variable part
         cs4 = Constraint(2, Dict(:X=>[2;;]), Dict(:x=>2, :y=>2))
         prob = Problem(Minimize(o), [cs1, cs2, cs4])
-        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10)
+        _, _, primalsol, _ = solvesdp(prob, omega_d=10, omega_p = 10, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
         @test norm(slacks(prob, primalsol)) < 1e-5
 
         # infeasible: same psd part, same free part, but different constant
         cs5 = Constraint(4, Dict(:X=>[1;;]), Dict(:x=>1, :y=>1))
         prob = Problem(Minimize(o), [cs1, cs2, cs5])
-        @test_throws ErrorException solvesdp(prob)
+        @test_throws ErrorException solvesdp(prob, preprocess=true)
 
         # lin dep free vars
         cs6 = Constraint(1, Dict(:Y=>[1;;]), Dict(:x=>2, :y=>2))
         prob = Problem(Minimize(o), [cs1, cs6])
-        _, _, primalsol, _ = solvesdp(prob)
+        _, _, primalsol, _ = solvesdp(prob, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 1.5 atol=1e-5 
         @test norm(slacks(prob, primalsol)) < 1e-5
 
@@ -285,14 +289,14 @@ using AbstractAlgebra: RealField
         # with low rank stuff
         cs7 = Constraint(1, Dict(:Y=>LowRankMatPol([1], [[1]])), Dict(:z=>1))
         prob = Problem(Minimize(Objective(1, Dict(:X=>[1;;], :Y=>[1;;]), Dict())), [cs1, cs2, cs3, cs4, cs7])
-        _, _, primalsol, _ = solvesdp(prob)
+        _, _, primalsol, _ = solvesdp(prob, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 1.25 atol=1e-5 
         @test norm(slacks(prob, primalsol)) < 1e-5
 
         # free variables in objective that get removed
         o = Objective(1, Dict(:X=>[1;;]), Dict(:x=>-1, :y=>-2))
         prob = Problem(Minimize(o), [cs1, cs2])
-        _, _, primalsol, _ = solvesdp(prob)
+        _, _, primalsol, _ = solvesdp(prob, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 0 atol=1e-5 
         @test norm(slacks(prob, primalsol)) < 1e-5
 
@@ -300,15 +304,15 @@ using AbstractAlgebra: RealField
         cs8 = Constraint(0, Dict(), Dict(:x=>1))
         cs9 = Constraint(1//2, Dict(), Dict(:y=>1))
         prob = Problem(Minimize(o), [cs1,cs2,cs8,cs9,cs5])
-        @test_throws ErrorException solvesdp(prob) 
+        @test_throws ErrorException solvesdp(prob, preprocess=true) 
 
         #only psd variables, lin dep constraints in the variables, but different rhs
         cs10 = Constraint(1, Dict(:X=>[1;;]), Dict())
         cs11 = Constraint(0, Dict(:X=>[1;;]), Dict())
         prob = Problem(Minimize(Objective(0, Dict(:X=>[1;;]), Dict())), [cs10, cs11])
-        @test_throws ErrorException solvesdp(prob)
+        @test_throws ErrorException solvesdp(prob, preprocess=true)
         prob = Problem(Minimize(Objective(0, Dict(:X=>[1;;]), Dict())), [cs10, cs10])
-        _, _, primalsol, _ = solvesdp(prob)
+        _, _, primalsol, _ = solvesdp(prob, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
 
     end
