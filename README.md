@@ -138,9 +138,9 @@ function polyopt(f, d)
     problem = Problem(Maximize(objective), [constraint])
 
     #Solve the SDP and return results
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem)
 
-    objvalue(problem, dualsol)
+    objvalue(problem, primalsol)
 end
 ```
 Then we can for example find the minimum of the polynomial $x^2+1$ using
@@ -175,9 +175,9 @@ function polyopt_exact(f, d)
     problem = Problem(Maximize(objective), [constraint])
 
     #Solve the SDP and return results
-    status, primalsol, dualsol, time, errorcode = solvesdp(problem)
+    status, dualsol, primalsol, time, errorcode = solvesdp(problem)
 
-    success, esol = exact_solution(problem, primalsol, dualsol)
+    success, esol = exact_solution(problem, dualsol, primalsol)
 
     success, objvalue(problem, esol)
 end

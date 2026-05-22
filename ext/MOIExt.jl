@@ -36,7 +36,8 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
             :max_complementary_gap=>big(10)^100, # the maximum of <X,Y>/#rows(X)
             :need_dual_feasible=>false, # terminate when the solution is dual feasible
             :need_primal_feasible=>false, # terminate when the solution is primal feasible
-            :verbose => true, # false: print nothing, true: print information after each iteration
+            :verbose=>true, # false: print nothing, true: print information after each iteration
+            :preprocess=>true, # preprocess to remove linear dependencies in constraints and free variables
             :step_length_threshold=>1e-7,
             :safe_step=>true,
             :correctoronly=>false,

@@ -66,7 +66,7 @@ Keyword arguments:
   - `primalsol` (default: `nothing`): start from the solution `(dualsol, primalsol)` if both `dualsol` and `primalsol` are given
   - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is dual and primal feasible
   - `save_settings` (default: SaveSettings(), not saved): use the SaveSettings to determine whether and how often the iterates are saved during the algorithm. 
-  - `preprocess` (default: `true`): Preprocess the SDP to detect and remove linear dependencies in the constraints and free variables. 
+  - `preprocess` (default: `false` for the solver interface and `true` for the JuMP interface): Preprocess the SDP to detect and remove linear dependencies in the constraints and free variables. 
 """
 function solvesdp(
     problem::Problem;
@@ -94,7 +94,6 @@ function solvesdp(
 	# testing=false, # print the times of the first two iterations. This is for testing purposes
 # )
     sdp = ClusteredLowRankSDP(problem, prec=prec)
-    sdp = convert_to_prec(sdp, prec)
     solvesdp(sdp; prec=prec, kwargs...)
 end
 function solvesdp(
@@ -120,11 +119,13 @@ function solvesdp(
     safe_step::Bool=true,
     correctoronly=false,
     save_settings::SaveSettings=SaveSettings(),
-    preprocess=true, #remove linear dependent constraints and free variables
+    preprocess=false, #remove linear dependent constraints and free variables
     #experimental & testing:
     matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
 	testing=false, # print the times of the first two iterations. This is for testing purposes
 )
+    sdp = convert_to_prec(sdp, prec) #
+
     # the default values mostly come from Simmons-Duffin original paper, or from the default values of SDPA-GMP (slow but stable mode)
 	#NOTE: Because we use Arb through Arblib.jl, the code might look a bit like C instead of Julia.
 	# There is an issue on the Arblib.jl GitHub about using the MutableArithmetic api to use e.g.
@@ -521,8 +522,10 @@ function solvesdp(
             end
             if preprocess
                 xbf, ybf = postprocess(x,y, cs, var_rels)
+                dualsol, primalsol = solution_to_bigfloat(X, xbf, Y, ybf, sdp)
+            else
+                dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
             end
-            dualsol, primalsol = solution_to_bigfloat(X, xbf, Y, ybf, sdp)
             serialize(save_name, (dualsol, primalsol))
             save_now = false
         end
