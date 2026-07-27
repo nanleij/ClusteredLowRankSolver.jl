@@ -156,7 +156,7 @@ function solvesdp(
     # Repeat from step 2
     if preprocess
         num_constr = [size(sdp.B[j], 1) for j in eachindex(sdp.B)]
-        cs, var_rels = preprocess!(sdp)
+        cs, var_rels, cdual_recovery = preprocess!(sdp)
         c_removed = [Int[] for j in eachindex(sdp.B)]
         for (i,j,p) in cs
             push!(c_removed[j], p)
@@ -206,7 +206,9 @@ function solvesdp(
         constraint_indices = sort(collect(keys(sdp.order_c)))
         for (j,l) in constraint_indices
             idx = sdp.order_c[(j,l)]
-            x[idx] = dualsol.x[j][l]
+            if idx > 0 # other elements correspond to empty constraints
+                x[idx] = dualsol.x[j][l]
+            end
         end
         Arblib.get_mid!(x, x)
         for j in eachindex(sdp.matrix_coeff_names)
@@ -521,7 +523,7 @@ function solvesdp(
                 save_name = replace(save_settings.save_name, "#" => save_count) * ".jls"
             end
             if preprocess
-                xbf, ybf = postprocess(x,y, cs, var_rels)
+                xbf, ybf = postprocess(x,y, Y, cs, cdual_recovery, var_rels, BigFloat.(d_obj), sdp.maximize)
                 dualsol, primalsol = solution_to_bigfloat(X, xbf, Y, ybf, sdp)
             else
                 dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
@@ -632,7 +634,7 @@ function solvesdp(
     dualobj = BigFloat(d_obj)
     primalobj = BigFloat(p_obj)  
     if preprocess
-        x, y = postprocess(x,y, cs, var_rels)
+        x, y = postprocess(x, y, Y, cs, cdual_recovery, var_rels, dualobj, sdp.maximize)
     end
     dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
 
@@ -784,7 +786,7 @@ function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
     x_orig = [BigFloat[] for i=1:constraint_indices[end][1]]
     for (j,l) in constraint_indices
         idx = sdp.order_c[(j,l)]
-        push!(x_orig[j], x[idx])
+        push!(x_orig[j], idx > 0 ? x[idx] : 0)
     end
 
 	primalsol = PrimalSolution{BigFloat}(BigFloat, matrixvars, freevars)

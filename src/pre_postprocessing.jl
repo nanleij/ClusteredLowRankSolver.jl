@@ -56,6 +56,19 @@ function find_linear_dependencies(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt
     end
     keepconstraints = [i for i=1:size(mfv,1) if !(i in cs)]
     
+    # for recovery, we need to find a vector x such that [mpsd; mfv] x = [vec(Y); b], where Y is the dual psd variable and b is the objective vector for the free variables
+    # when the psd part is not used in the removed constraints, there is a unique solution to the first part (mpsd x = vec(Y)), so we only have to solve a small system
+    # Since we potentially need to do that multiple times, we factorize the necessary stuff here.
+    if length(cs) > 0
+        if !iszero(mpsd[:, cs]) 
+            systemmat = qr(vcat(mpsd, transpose(mfv), transpose(rhs)), ColumnNorm())
+        else
+            # need to solve mfv^T x = b, but only the xi from the removed constraints are unknown
+            systemmat = (qr(transpose(mfv[cs, :]), ColumnNorm()), transpose(mfv[keepconstraints, :]))
+        end
+    else
+        systemmat = nothing
+    end
 
     # constraints on free variables through the lin dep constraints:
     freevar_mat = hcat(mfv, rhs) # size: number of constraints x (number of free variables + 1)
@@ -133,7 +146,7 @@ function find_linear_dependencies(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt
         fv_nonzeros = 1:size(mfv_new,2)
     end
     total_removed = length(fv_zeros) + length(nf_vars)
-    return [(i, cs_idx[i][1], cs_idx[i][2]) for i in cs], (fv_zeros, fv_nonzeros, Rref, rhs_changed, nf_vars, ff_vars), total_removed
+    return [(i, cs_idx[i]...) for i in cs], (fv_zeros, fv_nonzeros, Rref, rhs_changed, nf_vars, ff_vars), total_removed, (systemmat, T.(sdp.b))
 end
 
 function vectorize_constraint(sdp::ClusteredLowRankSDP, cidx, subblocksizes; T=BigFloat)
@@ -234,23 +247,35 @@ function remove_lindep_freevars!(sdp::ClusteredLowRankSDP,  (fv_zeros, fv_nonzer
     return sdp
 end
 
-function add_zeros_constraintdual(x, cs; T=BigFloat)
-    # after solving, we have to add a 0 in the dual solution for every constraint that was removed
-    # (since it is not used in the dual solution)
-    csi = sort([t[1] for t in cs])
-    xnew = T[]
+function add_constraintdual(x, dualsol_mats, cs,(systemmat, b), dualobj, objsense; T=BigFloat) 
+    if isnothing(systemmat) # no constraints removed, so the dual solution still works.
+        return x
+    end
+    
+    # harder case: the constraints do contain PSD variables. Systemmat is a qr factorization
+    if !(systemmat isa Tuple)
+        Yvec = vectorize(dualsol_mats)
+        x = systemmat \ vcat(Yvec, (-1)^(!objsense)*BigFloat.(b), dualobj)
+        return x
+    end
+    # simple case: the constraints do not contain PSD variables, so part of the dual variables are already fixed
+    x_add = systemmat[1]\((-1)^(!objsense)*b-systemmat[2] * x)
+    
+    # # we had a system [ I Rref] 
+    csi = sort([(t[1], i) for (i,t) in enumerate(cs)])
+    xnew = zeros(T, length(x)+length(cs))
     k = 1
     j = 1
     for i=1:length(x) + length(cs)
-        if length(csi) >= j && csi[j] == i
-            push!(xnew, T(0))
+        if length(csi) >= j && csi[j][1] == i
+            xnew[i] = T(x_add[csi[j][2]])
             j+=1
         else
-            push!(xnew, T(x[k]))
+            xnew[i] = T(x[k])
             k+=1
         end
     end
-    return xnew
+    return xnew    
 end
 
 
@@ -276,6 +301,12 @@ function add_dependent_freevars(y, (fv_zeros, fv_nonzeros, Rref, rhs_changed, nf
 end
 
 function preprocess!(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt(eps(T)))
+    # @show sdp.B
+    # @show sdp.A
+    # @show sdp.c
+    # @show sdp.b
+    # @show sdp.C
+    println("Starting preprocessing...")
     # we need BigFloat because qr factorization is not available in Arblib.jl
     # for correctness, we need the same precision
     bfprec = precision(T)
@@ -284,11 +315,11 @@ function preprocess!(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt(eps(T)))
     end
     # first test whether we need anything removed, if so, calculate the correct changes in high precision
     # this saves a lot of time for big SDPs without linear dependencies
-    cs, var_rels, total_free_removed = find_linear_dependencies(sdp; T=Float64)
+    cs, var_rels, total_free_removed, systemmat = find_linear_dependencies(sdp; T=Float64)
     if length(cs) > 0 || total_free_removed > 0
-        cs, var_rels, total_free_removed = find_linear_dependencies(sdp; T, tol)
+        cs, var_rels, total_free_removed, systemmat = find_linear_dependencies(sdp; T, tol)
     else
-        return cs, var_rels # empty, so no changes
+        return cs, var_rels, systemmat # empty, so no changes
     end
 
     remove_lindep_constraints!(sdp, cs)
@@ -306,22 +337,40 @@ function preprocess!(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt(eps(T)))
     if T==BigFloat
         setprecision(BigFloat, bfprec)
     end
-    return cs, var_rels
+    # @show sdp.B
+    # @show sdp.A
+    # @show sdp.c
+    # @show sdp.b
+    # @show sdp.C
+    return cs, var_rels, systemmat
 end
 
-function postprocess(x, y, cs, var_rels; T=BigFloat)
+function postprocess(x, y, Y, cs, cdual_recovery, var_rels, dualobj, objsense; T=BigFloat)
+    # @show x
+    # @show Y
+    # @show cs
+    # @show cdual_recovery[1]
+    # @show cdual_recovery[2]
+    # @show var_rels
+    # @show dualobj
     # use the precision of the variables
     bfprec = precision(T)
     # x corresponds to constraints, so x has length >= 1
     if bfprec < precision(first(x)) && T==BigFloat
         setprecision(T, precision(first(x)))
     end
-    x = add_zeros_constraintdual(x, cs; T)
+    # @show length(x)
+    x = add_constraintdual(x, Y, cs, cdual_recovery, dualobj, objsense; T)
     y = add_dependent_freevars(y, var_rels; T)
+    # @show length(x)
     if T==BigFloat
         setprecision(T, bfprec)
     end
     return x, y
+end
+
+function vectorize(Y::BlockDiagonal)
+    [Y.blocks[j].blocks[l][i,k] for j in eachindex(Y.blocks) for l in eachindex(Y.blocks[j].blocks) for i=1:size(Y.blocks[j].blocks[l], 1) for k=1:i]
 end
 
 

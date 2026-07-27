@@ -883,6 +883,9 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     end
     # sort clusters, to have a consistent order over multiple runs
     sort!(clusters, by = x->(length(x), hash(x)))
+    if length(clusters) == 0
+        error("ClusteredLowRankSolver.jl requires PSD or nonnegative variables")
+    end
 
     # find out which constraints belong to which cluster
     # we build a vector of vectors containing constraint indices
@@ -1062,6 +1065,12 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
             end
         end
     end
+    # add empty constraints to a nonexisting cluster
+    for (i, constraintindex) in enumerate(emptyconstraints)
+        for k in eachindex(sos.constraints[constraintindex].samples)
+            order_c[(constraintindex, k)] = -1
+        end
+    end
 
     b = ArbRefMatrix(length(freecoefflabels),1,prec=prec)
     for (k,v) in sos.objective.freecoeff
@@ -1144,8 +1153,8 @@ Base.show(io::IO, x::Status) = @printf(io,"NOINFO")
 
 A dual solution to the semidefinite program, with fields
   - `base_ring`
-  - `x::Vector{Vector{T}}`  -- The primal variables to the constraints. Indexed by [constraintindex][sampleindex]
-  - `matrixvars::Dict{Any, Matrix{T}}` -- The primal variables to the PSD constraints on the matrices
+  - `x::Vector{Vector{T}}`  -- The dual variables to the constraints. Indexed by [constraintindex][sampleindex]
+  - `matrixvars::Dict{Any, Matrix{T}}` -- The dual variables to the PSD constraints on the matrices
 """
 struct DualSolution{T}
     base_ring
@@ -1201,6 +1210,21 @@ function objvalue(problem::Problem, sol::PrimalSolution)
 end
 function objvalue(obj::Union{Minimize, Maximize}, sol::PrimalSolution)
     objvalue(objective(obj), sol)
+end
+
+"""
+    dualobjvalue(problem::Problem, sol::DualSolution)
+
+Return the dual objective function value for the problem corresponding to the dual solution.
+"""
+function dualobjvalue(problem::Problem, sol::DualSolution{T}) where T
+    total = T(0)
+    for (k,c) in enumerate(constraints(problem))
+        for (si, s) in enumerate(c.samples)
+            total += myevaluate(c.constant, s) * sol.x[k][si] 
+        end
+    end
+    return problem.objective.constant + (problem.maximize ? total : -total)
 end
 
 #Q: Do we want abstract struct Solution, with subtypes PrimalSolution and DualSolution?
@@ -1281,9 +1305,9 @@ function slacks(problem::Problem, sol::PrimalSolution)
 end
 
 """
-    vectorize(sol)
+    vectorize(sol::PrimalSolution)
 
-Vectorize the solution by taking the upper triangular part of the matrices. 
+Vectorize the primal solution by taking the upper triangular part of the matrices. 
 The variables are first sorted by size and then by hash.
 """
 function vectorize(sol::PrimalSolution{T}) where T
@@ -1296,6 +1320,23 @@ function vectorize(sol::PrimalSolution{T}) where T
     end
     for k in sort(collect(keys(sol.freevars)), by=hash)
         push!(v, sol.freevars[k])
+    end
+    v
+end
+
+"""
+    vectorize(sol::DualSolution)
+
+Vectorize the PSD variables in the dual solution by taking the upper triangular part of the matrices.
+The dual variables corresponding to the constraint are not taken into account.
+"""
+function vectorize(sol::DualSolution{T}) where T
+    v = T[]
+    for k in sort(collect(keys(sol.matrixvars)), by=k->(size(sol.matrixvars[k],1), hash(k)))
+        m = sol.matrixvars[k]
+        for i=1:size(m, 1), j=i:size(m, 2)
+            push!(v, m[i, j])
+        end
     end
     v
 end

@@ -40,7 +40,7 @@ export DualSolution, PrimalSolution, matrixvar, freevar, slacks, matrixvars, fre
 
 export vectorize, as_primal_solution, blocksizes, addconstraint!
 
-export linearsystem, objvalue, partial_linearsystem
+export linearsystem, objvalue, dualobjvalue, partial_linearsystem
 export RoundingSettings, linearsystem_coefficientmatching
 #Q: what do we want to export here? I imagine that people will mostly use exact_solution, not the basis_transformations etc
 # export basis_transformations, detecteigenvectors, transform, undo_transform, project_to_affine_space
