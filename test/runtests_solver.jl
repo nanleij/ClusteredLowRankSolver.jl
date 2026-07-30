@@ -320,6 +320,26 @@ using AbstractAlgebra: RealField
         @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
 
     end
+
+    @testset "SolverResult" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint])
+        res = solvesdp(problem)
+        @test optimal(res[1]) #taking a specific result
+        @test begin z = [x for x in res]; optimal(z[1]) end # iterating over the result
+        @test res.primalobj == objvalue(problem, res.primalsol)
+        @test res.dualobj == dualobjvalue(problem, res.dualsol)
+
+    end
+
+    @testset "Callbacks" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint])
+        @test optimal(solvesdp(problem, iteration_callback=tup->(tup.iter isa Integer))[1])
+        @test optimal(solvesdp(problem, solution_callback=(measurements, dualsol, primalsol)->(matrixvar(primalsol, :z)[1,1] isa BigFloat))[1])
+    end
 end
 
 
