@@ -61,10 +61,11 @@ function find_linear_dependencies(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt
     # Since we potentially need to do that multiple times, we factorize the necessary stuff here.
     if length(cs) > 0
         if !iszero(mpsd[:, cs]) 
-            systemmat = qr(vcat(mpsd, transpose(mfv), transpose(rhs)), ColumnNorm())
+            Qi, Ri, pi = qr(vcat(mpsd, transpose(mfv), transpose(rhs)), ColumnNorm())
+            systemmat = (true, Qi, Ri, pi)
         else
             # need to solve mfv^T x = b, but only the xi from the removed constraints are unknown
-            systemmat = (qr(transpose(mfv[cs, :]), ColumnNorm()), transpose(mfv[keepconstraints, :]))
+            systemmat = (false, qr(transpose(mfv[cs, :]), ColumnNorm()), transpose(mfv[keepconstraints, :]))
         end
     else
         systemmat = nothing
@@ -253,15 +254,35 @@ function add_constraintdual(x, dualsol_mats, cs,(systemmat, b), dualobj, objsens
     end
     
     # harder case: the constraints do contain PSD variables. Systemmat is a qr factorization
-    if !(systemmat isa Tuple)
+    if systemmat[1]
+        Q, R, p = systemmat[2:end]
         Yvec = vectorize(dualsol_mats)
-        x = systemmat \ vcat(Yvec, (-1)^(!objsense)*BigFloat.(b), dualobj)
-        return x
+        zero_cols = findall(i->iszero(R[:, i]), axes(R, 2)) # a column with zeros will correspond to a zero dual variable
+        nonzero_cols = [i for i in axes(R, 2) if !(i in zero_cols)]
+        zero_rows = findall(i->iszero(R[i, :]), axes(R, 1)) # a row with zeros will correspond to an unnecessary constraint
+        nonzero_rows = [i for i in axes(R, 1) if !(i in zero_rows)]
+        x_nonzero = R[nonzero_rows, nonzero_cols] \ (transpose(Q) * vcat(T.(Yvec), (-1)^(!objsense)*T.(b), T(dualobj)))[nonzero_rows]
+        for i in zero_cols
+            insert!(x_nonzero, i, T(0))
+        end
+        pinv = [findfirst(==(i), p) for i in eachindex(p)]
+        return x_nonzero[pinv]
     end
     # simple case: the constraints do not contain PSD variables, so part of the dual variables are already fixed
-    x_add = systemmat[1]\((-1)^(!objsense)*b-systemmat[2] * x)
+    Q, R, p = systemmat[2]
+    zero_cols = findall(i->iszero(R[:, i]), axes(R, 2)) # a column with zeros will correspond to a zero dual variable
+    nonzero_cols = [i for i in axes(R, 2) if !(i in zero_cols)]
+    zero_rows = findall(i->iszero(R[i, :]), axes(R, 1)) # a row with zeros will correspond to an unnecessary constraint
+    nonzero_rows = [i for i in axes(R, 1) if !(i in zero_rows)]
+    x_nonzero = R[nonzero_rows, nonzero_cols] \ (transpose(Q) * ((-1)^(!objsense)*b-systemmat[3] * x))[nonzero_rows]
+    for i in zero_cols
+        insert!(x_nonzero, i, T(0))
+    end
+    pinv = [findfirst(==(i), p) for i in eachindex(p)]
+    x_add = x_nonzero[pinv]
+
     
-    # # we had a system [ I Rref] 
+    # combine the old and new dual variables in the right way
     csi = sort([(t[1], i) for (i,t) in enumerate(cs)])
     xnew = zeros(T, length(x)+length(cs))
     k = 1
@@ -301,11 +322,6 @@ function add_dependent_freevars(y, (fv_zeros, fv_nonzeros, Rref, rhs_changed, nf
 end
 
 function preprocess!(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt(eps(T)))
-    # @show sdp.B
-    # @show sdp.A
-    # @show sdp.c
-    # @show sdp.b
-    # @show sdp.C
     println("Starting preprocessing...")
     # we need BigFloat because qr factorization is not available in Arblib.jl
     # for correctness, we need the same precision
@@ -337,32 +353,18 @@ function preprocess!(sdp::ClusteredLowRankSDP; T=BigFloat, tol=sqrt(eps(T)))
     if T==BigFloat
         setprecision(BigFloat, bfprec)
     end
-    # @show sdp.B
-    # @show sdp.A
-    # @show sdp.c
-    # @show sdp.b
-    # @show sdp.C
     return cs, var_rels, systemmat
 end
 
 function postprocess(x, y, Y, cs, cdual_recovery, var_rels, dualobj, objsense; T=BigFloat)
-    # @show x
-    # @show Y
-    # @show cs
-    # @show cdual_recovery[1]
-    # @show cdual_recovery[2]
-    # @show var_rels
-    # @show dualobj
     # use the precision of the variables
     bfprec = precision(T)
     # x corresponds to constraints, so x has length >= 1
     if bfprec < precision(first(x)) && T==BigFloat
         setprecision(T, precision(first(x)))
     end
-    # @show length(x)
     x = add_constraintdual(x, Y, cs, cdual_recovery, dualobj, objsense; T)
     y = add_dependent_freevars(y, var_rels; T)
-    # @show length(x)
     if T==BigFloat
         setprecision(T, bfprec)
     end

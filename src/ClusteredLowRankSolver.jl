@@ -22,6 +22,7 @@ export LowRankMatPol, Block, Constraint, Objective,	Problem, ClusteredLowRankSDP
 export name
 export Maximize, Minimize
 
+export SolverResult
 export Optimal, NearOptimal, DualFeasible, PrimalFeasible, Feasible, NotConverged
 
 export objective, matrixcoeff, freecoeff, matrixcoeffs, freecoeffs, constraints

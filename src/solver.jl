@@ -39,6 +39,81 @@ struct SaveSettings
     end
 end
 
+
+"""
+    SolverResult
+
+Contains the result of a run of the solver, returned by [`solvesdp`](@ref).
+
+# Fields
+
+- status
+- dualsol
+- primalsol
+- solvetime
+- errorcode
+- primalobj
+- dualobj
+
+# Field access and iteration
+
+Fields may be accessed by name or indexing (in the order provided above).
+`SolverResult` supports iteration, behaving like a tuple containing the above
+data.
+
+```julia
+julia> r = solvesdp(problem);
+[solver output]
+
+julia> r
+SolverResult with status pdOpt:
+  Primal objective: 13.1776280029815079399
+    Dual objective: 13.1776280029814978499
+
+julia> r.status
+pdOpt
+
+julia> _, _, _, solvetime = r;
+
+julia> solvetime
+1.5504841804504395
+
+julia> r[4]
+1.5504841804504395
+```
+
+"""
+struct SolverResult
+    status
+    dualsol
+    primalsol
+    solvetime
+    errorcode
+    primalobj
+    dualobj
+    return_tuple
+
+    function SolverResult(status, dualsol, primalsol, solvetime, errorcode, primalobj, dualobj)
+        data = (status, dualsol, primalsol, solvetime, errorcode, primalobj, dualobj)
+        return new(data..., data)
+    end
+end
+
+
+Base.show(io::IO, r::SolverResult) = print(io, "SolverResult with status $(r.status)")
+
+function Base.show(io::IO, ::MIME"text/plain", r::SolverResult)
+    println(io, "SolverResult with status $(r.status):")
+    println(io, "  Primal objective: ", r.primalobj)
+    print(io, "    Dual objective: ", r.dualobj)
+end
+
+Base.getindex(r::SolverResult, i::Int) = r.return_tuple[i]
+Base.iterate(r::SolverResult) = iterate(r.return_tuple)
+Base.iterate(r::SolverResult, state) = iterate(r.return_tuple, state)
+Base.length(r::SolverResult) = length(r.return_tuple)
+
+
 """
 ```
 	solvesdp(problem::Problem; kwargs...)
@@ -46,9 +121,9 @@ end
 ```
     solvesdp(sdp::ClusteredLowRankSDP; kwargs...)
 ```
-Solve the semidefinite program generated from `problem` or `sdp`. 
+Solve the semidefinite program generated from `problem` or `sdp`.
 
-Returns: status, dualsol, primalsol, solve_time, errorcode
+Returns an instance of [`SolverResult`](@ref) containing the result of the call.
 
 Keyword arguments:
   - `prec` (default: `precision(BigFloat)`): the precision used
@@ -66,6 +141,13 @@ Keyword arguments:
   - `primalsol` (default: `nothing`): start from the solution `(dualsol, primalsol)` if both `dualsol` and `primalsol` are given
   - `safe_step` (default: `true`): use only 'safe' steps with step length at most 1, and take alpha_p = alpha_d when the the solution is dual and primal feasible
   - `save_settings` (default: SaveSettings(), not saved): use the SaveSettings to determine whether and how often the iterates are saved during the algorithm. 
+  - `iteration_callback` (default: `nothing`): should be `nothing` or a callable `f`, in
+    which case `f` is called at each iteration with a named tuple containing
+    the same solution data that is printed when `verbose` is `true`.
+  - `solution_callback` (default: `nothing`): should be `nothing` or a callable `f` with
+    signature `f(measurements, dualsol, primalsol)`, which is called at each iteration with the current
+    solution measurements as a named tuple (as printed when `verbose` is `true`) and the current
+    primal and dual solutions.  This can only be specified if `save_settings` is not used.
   - `preprocess` (default: `false` for the solver interface and `true` for the JuMP interface): Preprocess the SDP to detect and remove linear dependencies in the constraints and free variables. 
 """
 function solvesdp(
@@ -96,6 +178,8 @@ function solvesdp(
     sdp = ClusteredLowRankSDP(problem, prec=prec)
     solvesdp(sdp; prec=prec, kwargs...)
 end
+
+
 function solvesdp(
     sdp::ClusteredLowRankSDP,
     threadinginfo::ThreadingInfo=ThreadingInfo(sdp); # the order of j and (j,l) used for threading
@@ -120,10 +204,18 @@ function solvesdp(
     correctoronly=false,
     save_settings::SaveSettings=SaveSettings(),
     preprocess=false, #remove linear dependent constraints and free variables
+    iteration_callback=nothing,
+    solution_callback=nothing,
     #experimental & testing:
     matmul_prec=prec, # precision for matrix multiplications for the bilinear pairings. A lower precision increases speed and probably decreases memory consumption, but also increases the minimum errors
 	testing=false, # print the times of the first two iterations. This is for testing purposes
 )
+    if !isnothing(save_settings.iter_interval) ||
+       !isnothing(save_settings.time_interval)
+        isnothing(solution_callback) ||
+            error("solution_callback cannot be used together with save_settings")
+    end
+
     sdp = convert_to_prec(sdp, prec) #
 
     # the default values mostly come from Simmons-Duffin original paper, or from the default values of SDPA-GMP (slow but stable mode)
@@ -515,6 +607,14 @@ function solvesdp(
                 save_time_start = time()
             end
         end
+        if save_now || !isnothing(solution_callback) # need the solution after this
+            if preprocess
+                xbf, ybf = postprocess(x, y, Y, cs, cdual_recovery, var_rels, dualobj, sdp.maximize)
+                dualsol, primalsol = solution_to_bigfloat(X, xbf, Y, ybf, sdp)
+            else
+                dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
+            end
+        end
         if save_now
             if save_settings.only_last # overwrite
                 save_name = save_settings.save_name * ".jls"
@@ -522,14 +622,32 @@ function solvesdp(
                 save_count += 1
                 save_name = replace(save_settings.save_name, "#" => save_count) * ".jls"
             end
-            if preprocess
-                xbf, ybf = postprocess(x,y, Y, cs, cdual_recovery, var_rels, BigFloat.(d_obj), sdp.maximize)
-                dualsol, primalsol = solution_to_bigfloat(X, xbf, Y, ybf, sdp)
-            else
-                dualsol, primalsol = solution_to_bigfloat(X, x, Y, y, sdp)
-            end
             serialize(save_name, (dualsol, primalsol))
             save_now = false
+        end
+
+        # If needed, make a named tuple with the current solution measurements
+        # used when printing information in case `verbose` is true, or when
+        # calling `iteration_callback` or `solution_callback`.
+        if verbose || !isnothing(iteration_callback) || !isnothing(solution_callback)
+            measurements = (
+                iter     = iter,
+                time     = time() - time_start,
+                mu       = BigFloat(mu),
+                d_obj    = BigFloat(d_obj),
+                p_obj    = BigFloat(p_obj),
+                dual_gap = BigFloat(dual_gap),
+                D_error  = BigFloat(compute_error(P)),
+                d_error  = BigFloat(compute_error(p)),
+                p_error  = BigFloat(compute_error(d)),
+                alpha_d  = BigFloat(alpha_d),
+                alpha_p  = BigFloat(alpha_p),
+                beta     = beta_c
+            )
+        end
+
+        if !isnothing(solution_callback)
+            solution_callback(measurements, dualsol, primalsol)
         end
 
         # We save the times of everything except for the first iteration, as they may include compile time
@@ -569,21 +687,14 @@ function solvesdp(
         # print the objectives of the start of the iteration, imitating simmons duffin
         # This might be a bit weird, because we only know the 1+sum(sizes[1:r-1]):1+sum(sizes[1:r])step lengths at the end of the iteration
         if verbose
-			@printf(
+            @printf(
                 "%5d %8.1f %11.3e %11.3e %11.3e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e\n",
-                iter,
-                time() - time_start,
-                BigFloat(mu),
-                BigFloat(d_obj),
-                BigFloat(p_obj),
-                BigFloat(dual_gap),
-                BigFloat(compute_error(P)),
-                BigFloat(compute_error(p)),
-                BigFloat(compute_error(d)),
-                BigFloat(alpha_d),
-                BigFloat(alpha_p),
-                beta_c
+                measurements...
             )
+        end
+
+        if !isnothing(iteration_callback)
+            iteration_callback(measurements)
         end
 
         # Compute the new objectives, for the new iteration
@@ -745,8 +856,17 @@ function solvesdp(
         status = NotConverged()
     end
 
-    status, dualsol, primalsol, time_total, error_code[1]
+    return SolverResult(
+        status,
+        dualsol,
+        primalsol,
+        time_total,
+        error_code[1],
+        primalobj,
+        dualobj
+    )
 end
+
 
 function solution_to_bigfloat(X_var,x_var, Y_var, y_var, sdp)
     X = BlockDiagonal([BlockDiagonal([BigFloat.(s) for s in W.blocks]) for W in X_var.blocks])

@@ -9,7 +9,7 @@ using PrecompileTools: @setup_workload, @compile_workload
         o = Objective(0, Dict(:A => ones(Int, 3,3), :B=>ones(Int, 1,1)), Dict())
         problem = Problem(Minimize(o), c)
         redirect_stdout(devnull) do
-            solvesdp(problem)
+            solvesdp(problem, preprocess=true)
         end
     end
 end
