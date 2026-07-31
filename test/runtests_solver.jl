@@ -182,43 +182,46 @@ using AbstractAlgebra: RealField
 
 
     @testset "SampledMPolyElem" begin #this is mostly tested through the examples too
-        R, (x,) = polynomial_ring(RealField, ["x"])
-        p1 = x^2 + 2
-        samples = [[i] for i=0:10]
-        Rsampled = sampled_polynomial_ring(BigFloat, samples)
-        p2 = Rsampled(p1)
-        @testset "addition" begin
-            @test (p1+p2)(5) == 2*p1(5)
-            @test (p2+p1)(5) == 2*p1(5)
-            @test (p2+p2)(5) == 2*p1(5)
-        end
-        @testset "subtraction" begin
-            @test (p1-p2)(4) == 0
-            @test (p2-p1)(4) == p2(4)-p1(4)
-            @test (p2-p2)(3) == 0
-        end
-        @testset "multiplication" begin
-            @test (p1*p2)(5) == p1(5)^2
-            @test (p2*p1)(5) == p1(5)^2
-            @test (p2*p2)(5) == p1(5)^2
-        end
-        @testset "substitution" begin
-            # multivariate substitution
-            p1(p2)(1) == 11
-            for FF in [QQ, ZZ]
-                R2, x2 = polynomial_ring(FF, [:x])
-                q = x2[1]^2+1
-                Rsampled2 = sampled_polynomial_ring(FF, [[i] for i=0:10])
-                q2 = Rsampled2(q)
-                @test q(q2)(FF(1)) == 5
+        R1, (x1,) = polynomial_ring(RealField, ["x"])
+        R2, x2 = polynomial_ring(RealField, :x)
+        for (R,x) in [(R1, x1), (R2, x2)]
+            p1 = x^2 + 2
+            samples = [BigFloat(i) for i=0:10]
+            Rsampled = sampled_polynomial_ring(BigFloat, samples)
+            p2 = Rsampled(p1)
+            @testset "addition" begin
+                @test (p1+p2)(5) == 2*p1(5)
+                @test (p2+p1)(5) == 2*p1(5)
+                @test (p2+p2)(5) == 2*p1(5)
             end
-            # univariate substitution
-            for FF in [QQ, ZZ]
-                R2, x2 = polynomial_ring(FF, :x)
-                q = x2^2+1
-                Rsampled2 = sampled_polynomial_ring(FF, collect(0:10))
-                q2 = Rsampled2(q)
-                @test q(q2)(FF(1)) == 5
+            @testset "subtraction" begin
+                @test (p1-p2)(4) == 0
+                @test (p2-p1)(4) == p2(4)-p1(4)
+                @test (p2-p2)(3) == 0
+            end
+            @testset "multiplication" begin
+                @test (p1*p2)(5) == p1(5)^2
+                @test (p2*p1)(5) == p1(5)^2
+                @test (p2*p2)(5) == p1(5)^2
+            end
+            @testset "substitution" begin
+                # multivariate substitution
+                p1(p2)(1) == 11
+                for FF in [QQ, ZZ]
+                    R2, x2 = polynomial_ring(FF, [:x])
+                    q = x2[1]^2+1
+                    Rsampled2 = sampled_polynomial_ring(FF, [[FF(i)] for i=0:10])
+                    q2 = Rsampled2(q)
+                    @test q(q2)(FF(1)) == 5
+                end
+                # univariate substitution
+                for FF in [QQ, ZZ]
+                    R2, x2 = polynomial_ring(FF, :x)
+                    q = x2^2+1
+                    Rsampled2 = sampled_polynomial_ring(FF, FF.(collect(0:10)))
+                    q2 = Rsampled2(q)
+                    @test q(q2)(FF(1)) == 5
+                end
             end
         end
     end
