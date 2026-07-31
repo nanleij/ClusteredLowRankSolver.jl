@@ -26,18 +26,6 @@ MOI.Test.runtests(model, cfg,
     "test_DualObjectiveValue_Min_VariableIndex_GreaterThan", 
     # supposed to fail with coefficient type UInt8 (but why?)
     "test_model_supports_constraint_ScalarAffineFunction_EqualTo",
-    # Bug in MOI with RSOCtoPSDBridge for generic number types (need new version of MOI to fix)
-    "test_conic_HermitianPositiveSemidefiniteConeTriangle_1", 
-    "test_conic_SecondOrderCone_VectorOfVariables", 
-    "test_constraint_PrimalStart_DualStart_SecondOrderCone", 
-    "test_conic_PositiveSemidefiniteConeTriangle_VectorOfVariables_2",
-    "test_conic_PositiveSemidefiniteConeSquare_VectorAffineFunction_2",
-    "test_conic_PositiveSemidefiniteConeSquare_VectorOfVariables_2",
-    "test_conic_PositiveSemidefiniteConeTriangle_VectorAffineFunction_2",
-    "test_conic_SecondOrderCone_Nonnegatives",
-    "test_conic_SecondOrderCone_Nonpositives",
-    "test_conic_SecondOrderCone_VectorAffineFunction",
-    "test_conic_SecondOrderCone_out_of_order",
     # no constraint on a variable. We remove the variable (with warning), they want dual_infeasible
     "test_conic_SecondOrderCone_no_initial_bound", 
     # No PSD/nonnegative variable:
