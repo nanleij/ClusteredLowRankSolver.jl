@@ -202,6 +202,9 @@ function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
         index_map,
         MOI.PositiveSemidefiniteConeTriangle,
     )
+    if isempty(index_map)
+        error("ClusteredLowRankSolver.jl requires at least one PSD or nonnegative variable")
+    end
     #2) for the free variables
     vis_src = MOI.get(src, MOI.ListOfVariableIndices())
     k = 1 # free variable index
@@ -257,9 +260,9 @@ function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike)
                     end
                 end
             end
-            if isempty(psd_dict)
-                throw(MOI.AddConstraintNotAllowed{F,S}("ClusteredLowRankSolver only support constraints including PSD or Nonnegative variables"))
-            end
+            # if isempty(psd_dict)
+            #     throw(MOI.AddConstraintNotAllowed{F,S}("ClusteredLowRankSolver only support constraints including PSD or Nonnegative variables"))
+            # end
             push!(cons, Constraint(MOI.constant(set), psd_dict, free_dict))
             index_map[ci_src] = MOI.ConstraintIndex{F,S}(k)
             k+=1 # actually count which constraint it is
@@ -403,7 +406,7 @@ function MOI.optimize!(opt::Optimizer)
     opt.result_data[:errorcode] = e
     opt.result_data[MOI.SolveTimeSec()] = t
     opt.result_data[MOI.ObjectiveValue()] = objvalue(pr, primalsol)
-    opt.result_data[MOI.DualObjectiveValue()] = pr.objective.constant + (-1)^(!pr.maximize) * sum(dualsol.x[i][1] * pr.constraints[i].constant for i in eachindex(dualsol.x))
+    opt.result_data[MOI.DualObjectiveValue()] = dualobjvalue(pr, dualsol)
     return 
 end
 

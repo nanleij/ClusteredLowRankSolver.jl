@@ -16,10 +16,13 @@ The samples should be sorted.
 """
 struct SampledMPolyRing{T} <: Nemo.Ring
     base_ring
-    samples
+    samples::Vector{Vector} # although we would like samples of type T, that is not feasible due to unsortable types T (e.g. algebraic number fields)
     function SampledMPolyRing(base_ring, samples)
         @assert issorted(samples)
         T = typeof(base_ring(1))
+        if !(first(samples) isa Vector)
+            samples = [[x] for x in samples]
+        end 
         new{T}(base_ring, samples)
     end
 end
@@ -72,7 +75,7 @@ function (R::SampledMPolyRing)(p::SampledMPolyRingElem)
     if parent(p) == R
         return p
     end
-    SampledMPolyRingElem(R, [R.base_ring(p(x...)) for x in R.samples])
+    SampledMPolyRingElem(R, [R.base_ring(evaluate(p, x)) for x in R.samples])
 end
 
 Base.one(R::SampledMPolyRing{T}) where T = R(1)
@@ -85,8 +88,8 @@ function Base.one(p::SampledMPolyRingElem{T}) where T
     one(parent(p))
 end
 
-(R::SampledMPolyRing)(p::Union{QQMPolyRingElem, MPolyRingElem}) = SampledMPolyRingElem(R, [R.base_ring(p(x...)) for x in R.samples])
-(R::SampledMPolyRing)(p::Union{QQPolyRingElem, PolyRingElem}) = SampledMPolyRingElem(R, [R.base_ring(p(x...)) for x in R.samples])
+(R::SampledMPolyRing)(p::Union{QQMPolyRingElem, MPolyRingElem}) = SampledMPolyRingElem(R, [R.base_ring(evaluate(p, x)) for x in R.samples])
+(R::SampledMPolyRing)(p::Union{QQPolyRingElem, PolyRingElem}) = SampledMPolyRingElem(R, [R.base_ring(evaluate(p, x...)) for x in R.samples])
 
 
 Base.iszero(p::SampledMPolyRingElem{T}) where T = all(iszero, p.evaluations)
@@ -112,7 +115,7 @@ for S in [QQMPolyRingElem, ZZMPolyRingElem]
         @assert all(q.parent == sp[1].parent for q in sp)
         r = zero(sp[1])
         for si in eachindex(r.evaluations)
-            r.evaluations[si] = p([q.evaluations[si] for q in sp]...)
+            r.evaluations[si] = evaluate(p, [q.evaluations[si] for q in sp])
         end
         return r
     end
@@ -122,7 +125,7 @@ function (p::Generic.MPoly{T})(sp::Vararg{SampledMPolyRingElem{T}}) where {T <: 
     @assert all(q.parent == sp[1].parent for q in sp)
     r = zero(sp[1])
     for si in eachindex(r.evaluations)
-        r.evaluations[si] = p([q.evaluations[si] for q in sp]...)
+        r.evaluations[si] = evaluate(p, [q.evaluations[si] for q in sp])
     end
     return r
 end
@@ -130,7 +133,7 @@ for S in [QQPolyRingElem, ZZPolyRingElem]
     function (p::S)(sp::SampledMPolyRingElem{T}) where T <: RingElem
         r = zero(sp)
         for si in eachindex(parent(sp).samples)
-            r.evaluations[si] = p(sp.evaluations[si])
+            r.evaluations[si] = evaluate(p, sp.evaluations[si])
         end
         return r        
     end
@@ -138,17 +141,15 @@ end
 function (p::Generic.Poly{T})(sp::SampledMPolyRingElem{T}) where T <: RingElem
     r = zero(sp)
     for si in eachindex(parent(sp).samples)
-        r.evaluations[si] = p(sp.evaluations[si])
+        r.evaluations[si] = evaluate(p, sp.evaluations[si])
     end
     return r        
 end
 
 function evaluate(p::SampledMPolyRingElem, v)
-    # univariate edge case: convert to number or vector depending on the samples of parent(p)
-    if !(v isa Vector) && first(parent(p).samples) isa Vector
+    # univariate edge case: convert to vector 
+    if !(v isa Vector)
         v = [v]
-    elseif (v isa Vector) && length(v) == 1 && !(first(parent(p).samples) isa Vector)
-        v = first(v)
     end
     i = searchsortedfirst(parent(p).samples, v)
     @assert parent(p).samples[i] == v || parent(p).samples[i] === v
@@ -263,7 +264,7 @@ This preserves a degree ordering of `basis` if present.
 function approximatefekete(basis, samples; base_ring=BigFloat, show_det=false, s=3, verbose=false)
     V, P, samples = approximate_fekete(samples, basis, show_det=show_det , s=s, prec=precision(base_ring), verbose=verbose)
     R = SampledMPolyRing(base_ring, samples)
-    [SampledMPolyRingElem(R, base_ring.(V[:,p]))  for p in eachindex(basis)], R.samples
+    [SampledMPolyRingElem(R, base_ring.(V[:,p]))  for p in eachindex(basis)], samples
 end
 
 ###################################
@@ -403,7 +404,7 @@ function sampleevaluate(x::T, sample; scaling=1, prec=precision(BigFloat)) where
 end
 
 function sampleevaluate(p::SampledMPolyRingElem, sample; scaling=1, prec=precision(BigFloat))
-    scaling * Arb(p(sample...),prec=prec)
+    scaling * Arb(evaluate(p, sample),prec=prec)
 end
 
 
@@ -883,6 +884,9 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
     end
     # sort clusters, to have a consistent order over multiple runs
     sort!(clusters, by = x->(length(x), hash(x)))
+    if length(clusters) == 0
+        error("ClusteredLowRankSolver.jl requires PSD or nonnegative variables")
+    end
 
     # find out which constraints belong to which cluster
     # we build a vector of vectors containing constraint indices
@@ -1062,6 +1066,12 @@ function ClusteredLowRankSDP(sos::Problem; prec=precision(BigFloat), verbose=fal
             end
         end
     end
+    # add empty constraints to a nonexisting cluster
+    for (i, constraintindex) in enumerate(emptyconstraints)
+        for k in eachindex(sos.constraints[constraintindex].samples)
+            order_c[(constraintindex, k)] = -1
+        end
+    end
 
     b = ArbRefMatrix(length(freecoefflabels),1,prec=prec)
     for (k,v) in sos.objective.freecoeff
@@ -1144,8 +1154,8 @@ Base.show(io::IO, x::Status) = @printf(io,"NOINFO")
 
 A dual solution to the semidefinite program, with fields
   - `base_ring`
-  - `x::Vector{Vector{T}}`  -- The primal variables to the constraints. Indexed by [constraintindex][sampleindex]
-  - `matrixvars::Dict{Any, Matrix{T}}` -- The primal variables to the PSD constraints on the matrices
+  - `x::Vector{Vector{T}}`  -- The dual variables to the constraints. Indexed by [constraintindex][sampleindex]
+  - `matrixvars::Dict{Any, Matrix{T}}` -- The dual variables to the PSD constraints on the matrices
 """
 struct DualSolution{T}
     base_ring
@@ -1201,6 +1211,21 @@ function objvalue(problem::Problem, sol::PrimalSolution)
 end
 function objvalue(obj::Union{Minimize, Maximize}, sol::PrimalSolution)
     objvalue(objective(obj), sol)
+end
+
+"""
+    dualobjvalue(problem::Problem, sol::DualSolution)
+
+Return the dual objective function value for the problem corresponding to the dual solution.
+"""
+function dualobjvalue(problem::Problem, sol::DualSolution{T}) where T
+    total = T(0)
+    for (k,c) in enumerate(constraints(problem))
+        for (si, s) in enumerate(c.samples)
+            total += myevaluate(c.constant, s) * sol.x[k][si] 
+        end
+    end
+    return problem.objective.constant + (problem.maximize ? total : -total)
 end
 
 #Q: Do we want abstract struct Solution, with subtypes PrimalSolution and DualSolution?
@@ -1281,9 +1306,9 @@ function slacks(problem::Problem, sol::PrimalSolution)
 end
 
 """
-    vectorize(sol)
+    vectorize(sol::PrimalSolution)
 
-Vectorize the solution by taking the upper triangular part of the matrices. 
+Vectorize the primal solution by taking the upper triangular part of the matrices. 
 The variables are first sorted by size and then by hash.
 """
 function vectorize(sol::PrimalSolution{T}) where T
@@ -1296,6 +1321,23 @@ function vectorize(sol::PrimalSolution{T}) where T
     end
     for k in sort(collect(keys(sol.freevars)), by=hash)
         push!(v, sol.freevars[k])
+    end
+    v
+end
+
+"""
+    vectorize(sol::DualSolution)
+
+Vectorize the PSD variables in the dual solution by taking the upper triangular part of the matrices.
+The dual variables corresponding to the constraint are not taken into account.
+"""
+function vectorize(sol::DualSolution{T}) where T
+    v = T[]
+    for k in sort(collect(keys(sol.matrixvars)), by=k->(size(sol.matrixvars[k],1), hash(k)))
+        m = sol.matrixvars[k]
+        for i=1:size(m, 1), j=i:size(m, 2)
+            push!(v, m[i, j])
+        end
     end
     v
 end

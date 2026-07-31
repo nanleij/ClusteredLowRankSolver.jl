@@ -8,7 +8,7 @@ function approximate_fekete(initial_points, basis;prec=precision(BigFloat), verb
     # the returned V,P are BigFloats. Otherwise it doesn't work with for example ArbField
     # This destroys the use of error bounds though.
     verbose && print("Evaluating polynomials... ")
-    t = @elapsed V = [pol(point...) for point in initial_points, pol in basis]
+    t = @elapsed V = [evaluate(pol, point) for point in initial_points, pol in basis]
     verbose && println(t)
     if alg == :BigFloat
         V, P, point_indices = approximate_fekete_bigfloat(V, s=s, show_det=show_det, prec=prec, verbose=verbose)
@@ -124,7 +124,7 @@ function approximatefeketeexact(R, basis, samples; s=3)
     esamples = [R.(rationalize.(BigInt, Float64.(sample), tol=1e-3)) for sample in samples]
 
 	print("Evaluating polynomials in exact arithmetic...")
-    t = @elapsed eV = [pol(esample...) for esample in esamples, pol in basis]
+    t = @elapsed eV = [evaluate(pol,esample) for esample in esamples, pol in basis]
     println(" ($(t)s)")
 
 	aV = BigFloat.(eV)

@@ -7,8 +7,9 @@ using AbstractAlgebra: RealField
         # these examples test nearly everything
         include("../examples/PolyOpt.jl")
         using  .PolyOpt
-        problem, _, primalsol = min_f(2)
-        @test  objvalue(problem, primalsol) ≈ -2.113 atol=1e-2
+        problem, dualsol, primalsol = min_f(2)
+        @test objvalue(problem, primalsol) ≈ -2.113 atol=1e-2
+        @test dualobjvalue(problem, dualsol) ≈ -2.113 atol=1e-2
 
         include("../examples/Delsarte.jl")
         using .Delsarte
@@ -16,15 +17,18 @@ using AbstractAlgebra: RealField
 
         include("../examples/SpherePacking.jl")
         using .SpherePacking
-        problem, _, primalsol = cohnelkies(8, 15, prec=256)
+        problem, dualsol, primalsol = cohnelkies(8, 15, prec=256)
         @test objvalue(problem, primalsol) ≈ BigFloat(pi)^4/384 atol=1e-4 #exact in the limit of d-> ∞, but for this d the error still is relatively large
-        problem, _, primalsol = Nsphere_packing(8, 15, [1//2,1//2],2, prec=300)
+        @test dualobjvalue(problem, dualsol) ≈ BigFloat(pi)^4/384 atol=1e-4
+        problem, dualsol, primalsol = Nsphere_packing(8, 15, [1//2,1//2],2, prec=300)
         @test objvalue(problem, primalsol) ≈ BigFloat(pi)^4/384 atol=1e-4
+        @test dualobjvalue(problem, dualsol) ≈ BigFloat(pi)^4/384 atol=1e-4
 
         include("../examples/ThreePointBound.jl")
         using .ThreePointBound
-        problem, _, primalsol = three_point_spherical_codes(4, 1//6, -1, 4, prec=256, omega_d=10^3, omega_p=10^3)
+        problem, dualsol, primalsol = three_point_spherical_codes(4, 1//6, -1, 4, prec=256, omega_d=10^3, omega_p=10^3)
         @test objvalue(problem, primalsol) ≈ 10 atol=1e-5
+        @test dualobjvalue(problem, dualsol) ≈ 10 atol=1e-5
     end
 
     @testset "Modelling" begin
@@ -178,43 +182,46 @@ using AbstractAlgebra: RealField
 
 
     @testset "SampledMPolyElem" begin #this is mostly tested through the examples too
-        R, (x,) = polynomial_ring(RealField, ["x"])
-        p1 = x^2 + 2
-        samples = [[i] for i=0:10]
-        Rsampled = sampled_polynomial_ring(BigFloat, samples)
-        p2 = Rsampled(p1)
-        @testset "addition" begin
-            @test (p1+p2)(5) == 2*p1(5)
-            @test (p2+p1)(5) == 2*p1(5)
-            @test (p2+p2)(5) == 2*p1(5)
-        end
-        @testset "subtraction" begin
-            @test (p1-p2)(4) == 0
-            @test (p2-p1)(4) == p2(4)-p1(4)
-            @test (p2-p2)(3) == 0
-        end
-        @testset "multiplication" begin
-            @test (p1*p2)(5) == p1(5)^2
-            @test (p2*p1)(5) == p1(5)^2
-            @test (p2*p2)(5) == p1(5)^2
-        end
-        @testset "substitution" begin
-            # multivariate substitution
-            p1(p2)(1) == 11
-            for FF in [QQ, ZZ]
-                R2, x2 = polynomial_ring(FF, [:x])
-                q = x2[1]^2+1
-                Rsampled2 = sampled_polynomial_ring(FF, [[i] for i=0:10])
-                q2 = Rsampled2(q)
-                @test q(q2)(FF(1)) == 5
+        R1, (x1,) = polynomial_ring(RealField, ["x"])
+        R2, x2 = polynomial_ring(RealField, :x)
+        for (R,x) in [(R1, x1), (R2, x2)]
+            p1 = x^2 + 2
+            samples = [BigFloat(i) for i=0:10]
+            Rsampled = sampled_polynomial_ring(BigFloat, samples)
+            p2 = Rsampled(p1)
+            @testset "addition" begin
+                @test (p1+p2)(5) == 2*p1(5)
+                @test (p2+p1)(5) == 2*p1(5)
+                @test (p2+p2)(5) == 2*p1(5)
             end
-            # univariate substitution
-            for FF in [QQ, ZZ]
-                R2, x2 = polynomial_ring(FF, :x)
-                q = x2^2+1
-                Rsampled2 = sampled_polynomial_ring(FF, collect(0:10))
-                q2 = Rsampled2(q)
-                @test q(q2)(FF(1)) == 5
+            @testset "subtraction" begin
+                @test (p1-p2)(4) == 0
+                @test (p2-p1)(4) == p2(4)-p1(4)
+                @test (p2-p2)(3) == 0
+            end
+            @testset "multiplication" begin
+                @test (p1*p2)(5) == p1(5)^2
+                @test (p2*p1)(5) == p1(5)^2
+                @test (p2*p2)(5) == p1(5)^2
+            end
+            @testset "substitution" begin
+                # multivariate substitution
+                p1(p2)(1) == 11
+                for FF in [QQ, ZZ]
+                    R2, x2 = polynomial_ring(FF, [:x])
+                    q = x2[1]^2+1
+                    Rsampled2 = sampled_polynomial_ring(FF, [[FF(i)] for i=0:10])
+                    q2 = Rsampled2(q)
+                    @test q(q2)(FF(1)) == 5
+                end
+                # univariate substitution
+                for FF in [QQ, ZZ]
+                    R2, x2 = polynomial_ring(FF, :x)
+                    q = x2^2+1
+                    Rsampled2 = sampled_polynomial_ring(FF, FF.(collect(0:10)))
+                    q2 = Rsampled2(q)
+                    @test q(q2)(FF(1)) == 5
+                end
             end
         end
     end
@@ -315,6 +322,26 @@ using AbstractAlgebra: RealField
         _, _, primalsol, _ = solvesdp(prob, preprocess=true)
         @test objvalue(prob, primalsol) ≈ 1 atol=1e-5 
 
+    end
+
+    @testset "SolverResult" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint])
+        res = solvesdp(problem)
+        @test optimal(res[1]) #taking a specific result
+        @test begin z = [x for x in res]; optimal(z[1]) end # iterating over the result
+        @test res.primalobj == objvalue(problem, res.primalsol)
+        @test res.dualobj == dualobjvalue(problem, res.dualsol)
+
+    end
+
+    @testset "Callbacks" begin
+        obj = Objective(0, Dict(:z=> hcat([1])), Dict())
+        constraint = Constraint(1,Dict(:z=>hcat([1]),:z2=>hcat([1])), Dict())
+        problem = Problem(Maximize(obj), [constraint])
+        @test optimal(solvesdp(problem, iteration_callback=tup->(tup.iter isa Integer))[1])
+        @test optimal(solvesdp(problem, solution_callback=(measurements, dualsol, primalsol)->(matrixvar(primalsol, :z)[1,1] isa BigFloat))[1])
     end
 end
 

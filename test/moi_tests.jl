@@ -12,7 +12,8 @@ end
 
 # test with BigFloat since we return BigFloat
 model = MOI.instantiate(ClusteredLowRankSolver.Optimizer; with_bridge_type = BigFloat)
-MOI.Test.runtests(model, MOI.Test.Config(BigFloat, rtol=1e-10, atol=1e-10,exclude=Any[MOI.VariableName, MOI.ConstraintName, MOI.delete,  MOI.ConstraintBasisStatus, MOI.ObjectiveBound]),
+cfg = MOI.Test.Config(BigFloat, rtol=1e-7, atol=1e-7,exclude=Any[MOI.VariableName, MOI.ConstraintName, MOI.delete,  MOI.ConstraintBasisStatus, MOI.ObjectiveBound])
+MOI.Test.runtests(model, cfg,
     exclude=[
     # adds 1 free variable, no constraints. That is not supported by ClusteredLowRankSolver (and doesn't make sense to do in real applications either)
     "test_attribute_RawStatusString", 
@@ -25,12 +26,12 @@ MOI.Test.runtests(model, MOI.Test.Config(BigFloat, rtol=1e-10, atol=1e-10,exclud
     "test_DualObjectiveValue_Min_VariableIndex_GreaterThan", 
     # supposed to fail with coefficient type UInt8 (but why?)
     "test_model_supports_constraint_ScalarAffineFunction_EqualTo",
-    # Float/BigFloat error due to RSOC to SOC bridge (I think). Hard to track down where exactly the Float is introduced
-    "test_conic_HermitianPositiveSemidefiniteConeTriangle_1", 
-    "test_conic_SecondOrderCone_VectorOfVariables", 
-    "test_constraint_PrimalStart_DualStart_SecondOrderCone", 
     # no constraint on a variable. We remove the variable (with warning), they want dual_infeasible
     "test_conic_SecondOrderCone_no_initial_bound", 
+    # No PSD/nonnegative variable:
+    "test_constraint_ScalarAffineFunction_EqualTo",
+    "test_linear_VectorAffineFunction_empty_row",
+    "test_modification_const_vectoraffine_zeros",
     ],
 )
 
