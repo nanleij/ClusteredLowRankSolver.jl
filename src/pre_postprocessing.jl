@@ -306,7 +306,7 @@ function add_dependent_freevars(y, (fv_zeros, fv_nonzeros, Rref, rhs_changed, nf
     # 1) add zeros for fv_zeros
     # 2) use Rref, rhs_changed, nf_vars, ff_vars to determine the linearly dependent variables from the indep ones
     # we have [I Rref][y_nf, y_f] = rhs, so y_nf = rhs - Rref * y_f
-    ynew = []
+    ynew = T[]
     k = 1
     for i=1:length(fv_zeros)+length(fv_nonzeros)
         if i in fv_zeros
