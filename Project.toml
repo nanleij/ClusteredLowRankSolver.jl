@@ -1,6 +1,6 @@
 name = "ClusteredLowRankSolver"
 uuid = "cadeb640-247c-4e6d-a8b8-270aef5e1f95"
-version = "2.2.0"
+version = "2.2.1"
 authors = ["nanleij <38724800+nanleij@users.noreply.github.com> and contributors"]
 
 [deps]
